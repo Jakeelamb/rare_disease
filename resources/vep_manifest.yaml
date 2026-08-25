@@ -1,0 +1,40 @@
+schema_version: "1.0"
+release: "Ensembl VEP 116.1"
+species: homo_sapiens
+assembly: GRCh38
+source: >-
+  https://ftp.ensembl.org/pub/release-116/variation/indexed_vep_cache/homo_sapiens_vep_116_GRCh38.tar.gz
+archive:
+  bytes: 27644657162
+  upstream_sum_checksum: 56036
+  upstream_sum_blocks: 26996736
+  sha256: 014c7dd9bb5ad06665866d62eb80f31ca761197bcb9b59280300676f996e600d
+cache:
+  info_sha256: b7298ffe9c8aba8e283d2e647a28a8345e6b7c4cd71e8d42eae66acfb94dd3ad
+  file_count: 13922
+  gene_build: GENCODE50
+  clinvar: "202509"
+  gnomad_exomes: "v4.1"
+  gnomad_genomes: "v4.1"
+coding_prefilter:
+  source: >-
+    https://ftp.ensembl.org/pub/release-116/gtf/homo_sapiens/Homo_sapiens.GRCh38.116.gtf.gz
+  gtf_bytes: 141121632
+  gtf_upstream_sum_checksum: 49151
+  gtf_upstream_sum_blocks: 137815
+  gtf_sha256: ed992f0eac7197d9627bda618f8f831ba355c95bd5d0796af785387d462828b6
+  method: >-
+    Select protein-coding exons on canonical contigs, map MT to the source
+    VCF's M contig, expand each boundary by 20 bp, convert to BED coordinates,
+    version-sort, and merge overlapping intervals.
+  intervals: 246912
+  covered_bases: 147621456
+  bed_sha256: 3110a828f7a57e3fdbad06c00906ce2fa89f63c8147ed88110aed2027531a307
+admission:
+  status: admitted
+  checks:
+    - exact byte count
+    - Ensembl CHECKSUMS BSD sum match
+    - independent SHA-256 identity
+    - complete gzip/tar traversal
+    - expected homo_sapiens/116_GRCh38/info.txt

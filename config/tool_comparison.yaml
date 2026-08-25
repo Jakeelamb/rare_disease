@@ -1,0 +1,7 @@
+version: "2026-08-25.1"
+scope: >-
+  Advisory public truth-set comparison for an additional small-variant caller.
+  A caller is evidence, never a vote; patient-only concordance is not validation.
+min_rescued_true_positives: 2
+max_added_false_positives_per_rescue: 1.0
+max_total_runtime_ratio: 3.0

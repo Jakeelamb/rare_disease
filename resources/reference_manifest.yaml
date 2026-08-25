@@ -1,0 +1,64 @@
+schema_version: "1.0"
+checked_at: "2026-08-25"
+provided_vcf_reference:
+  header_value: >-
+    GCA_000001405.15_GRCh38_no_alt_analysis_set_plus_hs38d1_maskedGRC_exclusions_v2_no_chr.fasta
+  contig_prefix: none
+rejected_alignment_reference:
+  provider: Broad Institute public reference bucket
+  object: hg38/v0/dragen_reference/Homo_sapiens_assembly38_masked.fasta
+  generation: "1635871463358331"
+  bytes: 3249604816
+  md5: 972f574e89061409e176dca5084c1fc2
+  contig_prefix: chr
+  source: >-
+    https://storage.googleapis.com/storage/v1/b/gcp-public-data--broad-references/o/hg38%2Fv0%2Fdragen_reference%2FHomo_sapiens_assembly38_masked.fasta
+admission:
+  status: rejected_contig_set_mismatch
+  evidence: >-
+    Candidate has 3366 contigs versus 2580 in the source VCF and includes ALT
+    loci absent from the source. It must not be used as the concordance lane.
+source_reference_reconstruction:
+  status: admitted
+  masked_primary: >-
+    NCBI GIAB GCA_000001405.15_GRCh38_no_alt_analysis_set_maskedGRC_exclusions_v2.fasta.gz
+  combined_decoys: >-
+    NCBI GCA_000001405.15_GRCh38_no_alt_plus_hs38d1_analysis_set.fna.gz
+  method: >-
+    Replace the primary contigs in the combined reference with the v2 masked
+    primary records, retain hs38d1 decoys, and remove only the chr name prefix.
+  artifacts:
+    masked_primary:
+      bytes: 885955190
+      sha256: 74482c74f2a47e8908404028d5305167636c9942fba4129ea0d70c5f04cab5ad
+    combined_decoys:
+      bytes: 874637925
+      md5: a056c57649f3c9964c68aead3849bbf8
+      sha256: 08959902840a28f410ad1220e36b2a3fbe2cb90beecceb6ea5b050a0e68ed96d
+    rebuilt_fasta:
+      bytes: 3150379261
+      sha256: 269753939d1e9912058d8223aaff77068637b45481d3b8474aee2758886d3617
+  validation:
+    contigs: 2580
+    contig_name_or_length_differences_vs_source_vcf: 0
+    source_vcf_records_checked: 5012204
+    reference_allele_mismatches: 0
+tool_admission:
+  bioconda_deepvariant_1_10_0:
+    status: rejected_missing_runtime_payload
+    evidence: >-
+      The installed package exposed dv_* wrappers, but make_examples.zip,
+      call_variants.zip, postprocess_variants.zip, and model payloads were absent.
+  deepvariant_official_container_1_10_0:
+    status: admitted_cpu
+    image: >-
+      google/deepvariant@sha256:962e5a83b1d76aae6990625d47102785f791603f2138aa1fa9aa4fb6a2eecbe6
+    smoke_test: DeepVariant version 1.10.0
+    gpu_status: not_claimed
+    rationale: >-
+      The CPU image passed an executable version check. No GPU claim is made
+      because this hardware generation was not validated against the image.
+  bioconda_bwa_mem2_2_3:
+    status: admitted_with_version_caution
+    package_version: "2.3"
+    executable_reported_version: "2.2.1"

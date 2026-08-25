@@ -1,0 +1,166 @@
+[build-system]
+requires = ["setuptools>=80", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mva-hackathon"
+version = "0.1.0"
+description = "Evidence-first rare-disease variant prioritization for the MVA Hackathon 2026"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "CC-BY-4.0" }
+authors = [{ name = "Jake Lamb" }]
+dependencies = [
+  "cyvcf2>=0.31,<0.32",
+  "jinja2>=3.1,<4",
+  "polars>=1.32,<2",
+  "pydantic>=2.11,<3",
+  "python-docx>=1.2,<2",
+  "PyYAML>=6,<7",
+  "rich>=14,<15",
+  "typer>=0.16,<1",
+]
+
+[project.scripts]
+mva = "mva_hackathon.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["mva_hackathon"]
+
+[tool.pixi.workspace]
+channels = ["conda-forge", "bioconda", "nodefaults"]
+platforms = ["linux-64"]
+
+[tool.pixi.pypi-dependencies]
+mva-hackathon = { path = ".", editable = true }
+
+[tool.pixi.environments.default.dependencies]
+python = "3.12.*"
+aria2 = ">=1.37,<2"
+setuptools = ">=80"
+wheel = "*"
+bcftools = ">=1.21,<1.23"
+htslib = ">=1.21,<1.23"
+samtools = ">=1.21,<1.23"
+bedtools = ">=2.31,<2.32"
+fastp = ">=0.24,<0.25"
+fastqc = ">=0.12,<0.13"
+multiqc = ">=1.30,<2"
+pigz = ">=2.8,<3"
+mosdepth = ">=0.3,<0.4"
+cyvcf2 = ">=0.31,<0.32"
+pysam = ">=0.23,<0.24"
+pydantic = ">=2.11,<3"
+typer = ">=0.16,<1"
+rich = ">=14,<15"
+pyyaml = ">=6,<7"
+jinja2 = ">=3.1,<4"
+polars = ">=1.32,<2"
+pyarrow = ">=20,<22"
+scipy = ">=1.15,<2"
+requests = ">=2.32,<3"
+tenacity = ">=9,<10"
+huggingface_hub = ">=0.34,<2"
+snakemake-minimal = ">=9,<10"
+python-docx = ">=1.2,<2"
+pdf2image = ">=1.17,<2"
+pandoc = ">=3.7,<4"
+pytest = ">=8.4,<9"
+pytest-cov = ">=6.2,<7"
+hypothesis = ">=6.138,<7"
+ruff = ">=0.12,<1"
+mypy = ">=1.17,<2"
+types-pyyaml = "*"
+
+[tool.pixi.environments.default.tasks]
+privacy-audit = "mva privacy-audit"
+hf-login = "hf auth login"
+hf-whoami = "hf auth whoami"
+download-data = "hf download SageBio/mva-hackathon-2026-data --repo-type dataset --revision f534cb0c1a607110c6dad0194299bd3dd62df542 --local-dir ./data --exclude 'README.md' '.gitattributes'"
+test = "pytest -q"
+test-cov = "pytest --cov=mva_hackathon --cov-report=term-missing"
+lint = "ruff check ."
+format-check = "ruff format --check ."
+typecheck = "mypy src"
+workflow-dry-run = "snakemake --snakefile workflow/Snakefile --cores 1 --dry-run"
+workflow-smoke = "python scripts/workflow_smoke.py"
+intake = "snakemake --snakefile workflow/Snakefile --cores 12 intake"
+phenotype-extraction = "snakemake --snakefile workflow/Snakefile --cores 4 phenotype_extraction"
+phenotype-scoring = "snakemake --snakefile workflow/Snakefile --cores 4 phenotype_scoring"
+small-variant = "snakemake --snakefile workflow/Snakefile --cores 12 small_variant"
+benchmark = "snakemake --snakefile workflow/Snakefile --cores 4 benchmark"
+wgs-smoke = "snakemake --snakefile workflow/Snakefile --cores 4 wgs_smoke"
+wgs-recall = "snakemake --snakefile workflow/Snakefile --cores 20 wgs_recall"
+wgs-comparison = "snakemake --snakefile workflow/Snakefile --cores 12 wgs_comparison"
+check = { depends-on = ["privacy-audit", "test", "lint", "format-check", "typecheck", "workflow-smoke"] }
+
+[tool.pixi.environments.vep]
+no-default-feature = true
+channels = ["conda-forge", "bioconda", "nodefaults"]
+
+[tool.pixi.environments.vep.dependencies]
+ensembl-vep = "116.1.*"
+perl-html-tableextract = "*"
+
+[tool.pixi.environments.vep.tasks]
+vep-version = "vep --help"
+
+[tool.pixi.environments.wgs]
+no-default-feature = true
+channels = ["conda-forge", "bioconda", "nodefaults"]
+
+[tool.pixi.environments.wgs.dependencies]
+python = "3.12.*"
+bwa-mem2 = ">=2.2,<2.4"
+samtools = ">=1.22,<1.24"
+bcftools = ">=1.22,<1.24"
+sambamba = ">=1.0,<2"
+hapcut2 = "1.3.4.*"
+mosdepth = ">=0.3,<0.4"
+
+[tool.pixi.environments.wgs.tasks]
+wgs-tool-smoke = "python scripts/wgs_tool_smoke.py"
+
+[tool.pixi.environments.benchmark]
+no-default-feature = true
+channels = ["conda-forge", "bioconda", "nodefaults"]
+
+[tool.pixi.environments.benchmark.dependencies]
+python = "3.12.*"
+bcftools = ">=1.23,<1.24"
+htslib = ">=1.23,<1.24"
+rtg-tools = "3.13.*"
+
+[tool.pixi.environments.benchmark.tasks]
+benchmark-tool-smoke = "python scripts/benchmark_tool_smoke.py"
+vcfeval = "python scripts/run_vcfeval.py"
+
+[tool.pixi.environments.phasing]
+no-default-feature = true
+channels = ["conda-forge", "bioconda", "nodefaults"]
+
+[tool.pixi.environments.phasing.dependencies]
+python = "3.9.*"
+whatshap = "2.8.*"
+hapcut2 = "1.3.4.*"
+bcftools = ">=1.23,<1.24"
+samtools = ">=1.23,<1.24"
+
+[tool.pixi.environments.phasing.tasks]
+phasing-tool-smoke = "whatshap --version"

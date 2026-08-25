@@ -1,0 +1,66 @@
+version: "2026-08-25.2"
+description: >-
+  Research prioritization policy for an N-of-1 recessive/compound-heterozygous
+  case. Scores order hypotheses; they are not clinical classifications.
+
+weights:
+  quality: 10.0
+  rarity: 15.0
+  consequence: 15.0
+  clinical: 15.0
+  pathogenicity: 10.0
+  phenotype_gene: 20.0
+  mechanism: 15.0
+  pair: 15.0
+  phase: 10.0
+
+consequence_scores:
+  transcript_ablation: 1.0
+  splice_acceptor_variant: 1.0
+  splice_donor_variant: 1.0
+  stop_gained: 1.0
+  frameshift_variant: 0.95
+  start_lost: 0.90
+  stop_lost: 0.85
+  transcript_amplification: 0.75
+  inframe_insertion: 0.65
+  inframe_deletion: 0.65
+  missense_variant: 0.50
+  protein_altering_variant: 0.50
+  splice_region_variant: 0.35
+  synonymous_variant: 0.05
+  intron_variant: 0.02
+  upstream_gene_variant: 0.01
+  downstream_gene_variant: 0.01
+  intergenic_variant: 0.0
+
+clinvar_scores:
+  pathogenic: 1.0
+  likely_pathogenic: 0.85
+  conflicting: 0.20
+  uncertain: 0.15
+  likely_benign: -0.70
+  benign: -1.0
+  unknown: 0.0
+
+phase_scores:
+  family_backed_trans: 1.0
+  read_backed_trans: 0.9
+  statistical_trans: 0.5
+  unresolved: 0.0
+  incompatible_cis: -1.0
+
+thresholds:
+  min_depth: 10
+  min_gq: 20.0
+  min_het_allele_balance: 0.20
+  max_het_allele_balance: 0.80
+  max_recessive_af: 0.01
+  # This is a fail-loud safety bound, never a silent pre-pair truncation.
+  max_variants_per_gene: 100
+  # Each allele needs consequence, clinical, or predictor support at this level.
+  min_allele_support: 0.10
+
+# Softmax temperature in score-point units. EPCR is a transparent heuristic
+# probability over the submitted hypothesis set, not a clinically calibrated risk.
+epcr_temperature: 12.0

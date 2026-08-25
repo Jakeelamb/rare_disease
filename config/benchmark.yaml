@@ -1,0 +1,20 @@
+version: "2026-08-25.1"
+assembly: GRCh38
+primary:
+  name: "GIAB HG002 small variants v4.2.1"
+  role: >-
+    Reference-matched primary benchmark. Keep its deprecated status explicit;
+    do not silently mix it with T2T-derived truth.
+  truth_vcf: resources/benchmark/HG002_GRCh38_1_22_v4.2.1_benchmark.vcf.gz
+  confident_bed: resources/benchmark/HG002_GRCh38_1_22_v4.2.1_benchmark.bed
+sensitivity:
+  name: "GIAB HG002 v5.0q GRCh38 projection"
+  role: "Sensitivity analysis only because the truth originates from T2T-HG002."
+  truth_vcf: resources/benchmark/HG002_GRCh38_v5.0q_projection.vcf.gz
+  confident_bed: resources/benchmark/HG002_GRCh38_v5.0q_projection.bed
+challenging_medically_relevant_genes:
+  role: "Separate stratified analysis; never merge its counts into the primary result."
+engine:
+  name: rtg-tools-vcfeval
+  version: "3.13"
+comparison_policy: config/tool_comparison.yaml

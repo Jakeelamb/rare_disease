@@ -1,0 +1,558 @@
+"""Fast, inspectable rare-disease research workflow.
+
+Each aggregate target is independently runnable. Snakemake records what ran;
+researchers inspect the private artifacts, change assumptions, and rerun.
+"""
+
+import re
+from pathlib import Path
+
+import yaml
+
+
+configfile: "config/workflow.yaml"
+
+
+def single_or_placeholder(pattern, placeholder, label):
+    matches = sorted(str(path) for path in Path(".").glob(pattern))
+    if len(matches) > 1:
+        raise WorkflowError(f"{label} glob matched multiple files: {matches}")
+    return matches[0] if matches else placeholder
+
+
+def discover_read_pairs(pattern):
+    fastq_paths = sorted(str(path) for path in Path(".").glob(pattern))
+    pairs = {}
+    for index, r1 in enumerate(path for path in fastq_paths if "_R1_" in path):
+        r2 = r1.replace("_R1_", "_R2_")
+        if r2 not in fastq_paths:
+            raise WorkflowError(f"missing R2 mate for {r1}")
+        match = re.search(r"(L\d{3})", Path(r1).name)
+        lane = match.group(1) if match else f"L{index + 1:03d}"
+        pairs[lane] = (r1, r2)
+    return pairs
+
+
+with Path(config["references"]["mechanism_priors"]).open(encoding="utf-8") as handle:
+    disease_priors = yaml.safe_load(handle)
+
+prior_regions = ",".join(gene["region"] for gene in disease_priors["genes"])
+private_root = config["outputs"]["private_root"]
+source_vcf = single_or_placeholder(
+    config["inputs"]["vcf_glob"], config["inputs"]["vcf_placeholder"], "VCF"
+)
+phenotype_docx = single_or_placeholder(
+    config["inputs"]["phenotype_glob"],
+    config["inputs"]["phenotype_placeholder"],
+    "phenotype",
+)
+read_pairs = discover_read_pairs(config["inputs"]["fastq_glob"])
+lanes = sorted(read_pairs)
+fastqs = [path for lane in lanes for path in read_pairs[lane]]
+fastp_jsons = expand(f"{private_root}/qc/fastp/{{lane}}.fastp.json", lane=lanes)
+phenotype_priors = f"{private_root}/evidence/phenotype_gene_priors.yaml"
+pixi_env_root = Path(config["pixi"]["environment_root"])
+vep_bin = pixi_env_root / "vep" / "bin"
+wgs_bin = pixi_env_root / "wgs" / "bin"
+phasing_bin = pixi_env_root / "phasing" / "bin"
+
+rule intake:
+    input:
+        f"{private_root}/qc/gzip_integrity.valid",
+        f"{private_root}/qc/multiqc/multiqc_report.html",
+        f"{private_root}/qc/vcf_summary.json",
+
+
+rule phenotype_extraction:
+    input:
+        f"{private_root}/phenotype/phenotype.json",
+        f"{private_root}/phenotype/phenotype.review.md",
+
+
+rule phenotype_scoring:
+    input:
+        f"{private_root}/phenotype/phenotype.curated.json",
+        phenotype_priors,
+
+
+rule small_variant:
+    input:
+        f"{private_root}/ranking/mva_prior.review.md",
+        f"{private_root}/ranking/agnostic_coding.review.md",
+        f"{private_root}/ranking/small_variant.lane_comparison.md",
+
+
+rule benchmark:
+    input:
+        f"{private_root}/benchmark/baseline.metrics.json",
+        f"{private_root}/benchmark/candidate.metrics.json",
+        f"{private_root}/benchmark/union.metrics.json",
+        f"{private_root}/benchmark/tool_comparison.json",
+
+
+rule wgs_smoke:
+    input:
+        f"{private_root}/wgs/smoke/wgs_tool_smoke.json",
+
+
+include: "wgs.smk"
+
+
+rule gzip_integrity:
+    input:
+        source_vcf,
+        fastqs,
+    output:
+        touch(f"{private_root}/qc/gzip_integrity.valid"),
+    threads: 12
+    log:
+        f"{private_root}/logs/gzip_integrity.log",
+    shell:
+        "pigz --test --processes {threads} {input:q} 2> {log:q}"
+
+
+rule fastp_lane_qc:
+    input:
+        r1=lambda wildcards: read_pairs[wildcards.lane][0],
+        r2=lambda wildcards: read_pairs[wildcards.lane][1],
+    output:
+        json=f"{private_root}/qc/fastp/{{lane}}.fastp.json",
+        html=f"{private_root}/qc/fastp/{{lane}}.fastp.html",
+    threads: 8
+    log:
+        f"{private_root}/logs/fastp_{{lane}}.log",
+    shell:
+        """
+        fastp --in1 {input.r1:q} --in2 {input.r2:q} \
+          --stdout --detect_adapter_for_pe \
+          --thread {threads} --json {output.json:q} --html {output.html:q} \
+          > /dev/null 2> {log:q}
+        """
+
+
+rule multiqc:
+    input:
+        fastp_jsons,
+    output:
+        f"{private_root}/qc/multiqc/multiqc_report.html",
+    log:
+        f"{private_root}/logs/multiqc.log",
+    params:
+        outdir=lambda wildcards, output: str(Path(output[0]).parent),
+        source=lambda wildcards, input: str(Path(input[0]).parent),
+    shell:
+        """
+        multiqc --force --outdir {params.outdir:q} \
+          --filename multiqc_report.html {params.source:q} > {log:q} 2>&1
+        """
+
+
+rule inspect_vcf:
+    input:
+        vcf=source_vcf,
+        tbi=f"{source_vcf}.tbi",
+    output:
+        f"{private_root}/qc/vcf_summary.json",
+    log:
+        f"{private_root}/logs/inspect_vcf.log",
+    shell:
+        "mva inspect-vcf {input.vcf:q} > {output:q} 2> {log:q}"
+
+
+rule extract_phenotype:
+    input:
+        document=phenotype_docx,
+    output:
+        f"{private_root}/phenotype/phenotype.json",
+    log:
+        f"{private_root}/logs/phenotype.log",
+    shell:
+        "mva extract-phenotype {input.document:q} --output {output:q} > {log:q}"
+
+
+rule render_phenotype_extraction_review:
+    input:
+        f"{private_root}/phenotype/phenotype.json",
+    output:
+        f"{private_root}/phenotype/phenotype.review.md",
+    log:
+        f"{private_root}/logs/phenotype_review.log",
+    shell:
+        "mva render-phenotype-review {input:q} --output {output:q} > {log:q}"
+
+
+rule phenotype_gene_priors:
+    input:
+        phenotype=f"{private_root}/phenotype/phenotype.curated.json",
+        ontology=config["references"]["hpo_ontology"],
+        annotations=config["references"]["hpo_gene_annotations"],
+    output:
+        phenotype_priors,
+    params:
+        release=config["references"]["hpo_release"],
+    log:
+        f"{private_root}/logs/phenotype_priors.log",
+    shell:
+        """
+        mva validate-phenotype-curation {input.phenotype:q} > {log:q}
+        mva phenotype-priors {input.phenotype:q} \
+          --ontology {input.ontology:q} --annotations {input.annotations:q} \
+          --hpo-release {params.release:q} --output {output:q} >> {log:q}
+        """
+
+
+rule prior_normalized_vcf:
+    input:
+        vcf=source_vcf,
+        tbi=f"{source_vcf}.tbi",
+        reference=config["references"]["alignment_fasta"],
+        fai=f"{config['references']['alignment_fasta']}.fai",
+    output:
+        vcf=f"{private_root}/variants/mva_prior.normalized.vcf.gz",
+        tbi=f"{private_root}/variants/mva_prior.normalized.vcf.gz.tbi",
+    params:
+        regions=prior_regions,
+    threads: config["threads"]["bcftools"]
+    log:
+        f"{private_root}/logs/prior_normalize.log",
+    shell:
+        """
+        bcftools view --threads {threads} --apply-filters PASS \
+          --regions {params.regions:q} --output-type u {input.vcf:q} 2>> {log:q} \
+        | bcftools norm --threads {threads} --multiallelics -any \
+          --fasta-ref {input.reference:q} --output-type z --output {output.vcf:q} 2>> {log:q}
+        bcftools index --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
+        """
+
+
+rule annotate_prior_vep:
+    input:
+        vcf=f"{private_root}/variants/mva_prior.normalized.vcf.gz",
+        tbi=f"{private_root}/variants/mva_prior.normalized.vcf.gz.tbi",
+        cache="resources/vep/homo_sapiens/116_GRCh38/info.txt",
+    output:
+        vcf=f"{private_root}/variants/mva_prior.vep.vcf.gz",
+        tbi=f"{private_root}/variants/mva_prior.vep.vcf.gz.tbi",
+    threads: config["threads"]["vep"]
+    log:
+        f"{private_root}/logs/prior_vep.log",
+    params:
+        cache=lambda wildcards, input: str(Path(input.cache).parents[2]),
+        perl=str(vep_bin / "perl"),
+        vep=str(vep_bin / "vep"),
+        bgzip=str(vep_bin / "bgzip"),
+        tabix=str(vep_bin / "tabix"),
+    shell:
+        """
+        {params.perl:q} {params.vep:q} --input_file {input.vcf:q} --output_file STDOUT \
+          --format vcf --vcf --offline --cache --cache_version 116 --assembly GRCh38 \
+          --dir_cache {params.cache:q} --symbol --canonical --mane --biotype \
+          --variant_class --numbers --af_gnomade --af_gnomadg --no_stats \
+          --force_overwrite --fork {threads} 2> {log:q} \
+        | {params.bgzip:q} --threads {threads} > {output.vcf:q}
+        {params.tabix:q} --preset vcf {output.vcf:q}
+        """
+
+
+rule prior_evidence:
+    input:
+        vcf=f"{private_root}/variants/mva_prior.vep.vcf.gz",
+        tbi=f"{private_root}/variants/mva_prior.vep.vcf.gz.tbi",
+        priors=phenotype_priors,
+        mechanism=config["references"]["mechanism_priors"],
+    output:
+        f"{private_root}/evidence/mva_prior.jsonl",
+    log:
+        f"{private_root}/logs/prior_evidence.log",
+    shell:
+        """
+        mva vep-to-evidence {input.vcf:q} --gene-priors {input.priors:q} \
+          --mechanism-priors {input.mechanism:q} --output {output:q} > {log:q}
+        """
+
+
+rule rank_prior:
+    input:
+        evidence=f"{private_root}/evidence/mva_prior.jsonl",
+        policy=config["policy"],
+    output:
+        f"{private_root}/ranking/mva_prior.ranked.json",
+    log:
+        f"{private_root}/logs/prior_rank.log",
+    shell:
+        "mva rank {input.evidence:q} --policy {input.policy:q} --ranked-json {output:q} > {log:q}"
+
+
+rule render_prior_review:
+    input:
+        f"{private_root}/ranking/mva_prior.ranked.json",
+    output:
+        f"{private_root}/ranking/mva_prior.review.md",
+    log:
+        f"{private_root}/logs/prior_review.log",
+    shell:
+        "mva render-review {input:q} --output {output:q} > {log:q}"
+
+
+rule agnostic_normalized_vcf:
+    input:
+        vcf=source_vcf,
+        tbi=f"{source_vcf}.tbi",
+        reference=config["references"]["alignment_fasta"],
+        fai=f"{config['references']['alignment_fasta']}.fai",
+    output:
+        vcf=f"{private_root}/variants/agnostic.normalized.vcf.gz",
+        tbi=f"{private_root}/variants/agnostic.normalized.vcf.gz.tbi",
+    threads: config["threads"]["bcftools"]
+    log:
+        f"{private_root}/logs/agnostic_normalize.log",
+    shell:
+        """
+        bcftools view --threads {threads} --apply-filters PASS --output-type u \
+          {input.vcf:q} 2>> {log:q} \
+        | bcftools norm --threads {threads} --multiallelics -any \
+          --fasta-ref {input.reference:q} --output-type z --output {output.vcf:q} 2>> {log:q}
+        bcftools index --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
+        """
+
+
+rule agnostic_coding_candidates_vcf:
+    input:
+        vcf=f"{private_root}/variants/agnostic.normalized.vcf.gz",
+        tbi=f"{private_root}/variants/agnostic.normalized.vcf.gz.tbi",
+        regions=config["references"]["coding_regions"],
+    output:
+        vcf=f"{private_root}/variants/agnostic.coding_candidates.vcf.gz",
+        tbi=f"{private_root}/variants/agnostic.coding_candidates.vcf.gz.tbi",
+    threads: config["threads"]["bcftools"]
+    log:
+        f"{private_root}/logs/agnostic_coding_prefilter.log",
+    shell:
+        """
+        bcftools view --threads {threads} --regions-file {input.regions:q} \
+          --output-type z --output {output.vcf:q} {input.vcf:q} 2> {log:q}
+        bcftools index --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
+        """
+
+
+rule annotate_agnostic_coding_vep:
+    input:
+        vcf=f"{private_root}/variants/agnostic.coding_candidates.vcf.gz",
+        tbi=f"{private_root}/variants/agnostic.coding_candidates.vcf.gz.tbi",
+        cache="resources/vep/homo_sapiens/116_GRCh38/info.txt",
+    output:
+        vcf=f"{private_root}/variants/agnostic_coding.vep.vcf.gz",
+        tbi=f"{private_root}/variants/agnostic_coding.vep.vcf.gz.tbi",
+    threads: config["threads"]["vep"]
+    log:
+        f"{private_root}/logs/agnostic_coding_vep.log",
+    params:
+        cache=lambda wildcards, input: str(Path(input.cache).parents[2]),
+        perl=str(vep_bin / "perl"),
+        vep=str(vep_bin / "vep"),
+        bgzip=str(vep_bin / "bgzip"),
+        tabix=str(vep_bin / "tabix"),
+    shell:
+        """
+        {params.perl:q} {params.vep:q} --input_file {input.vcf:q} --output_file STDOUT \
+          --format vcf --vcf --offline --cache --cache_version 116 --assembly GRCh38 \
+          --dir_cache {params.cache:q} --symbol --canonical --mane --biotype \
+          --variant_class --numbers --af_gnomade --af_gnomadg --no_stats \
+          --force_overwrite --fork {threads} --buffer_size 50000 2> {log:q} \
+        | {params.bgzip:q} --threads {threads} > {output.vcf:q}
+        {params.tabix:q} --preset vcf {output.vcf:q}
+        """
+
+
+rule agnostic_coding_evidence:
+    input:
+        vcf=f"{private_root}/variants/agnostic_coding.vep.vcf.gz",
+        tbi=f"{private_root}/variants/agnostic_coding.vep.vcf.gz.tbi",
+        priors=phenotype_priors,
+    output:
+        f"{private_root}/evidence/agnostic_coding.jsonl",
+    log:
+        f"{private_root}/logs/agnostic_coding_evidence.log",
+    shell:
+        "mva vep-to-evidence {input.vcf:q} --gene-priors {input.priors:q} --output {output:q} > {log:q}"
+
+
+rule rank_agnostic_coding:
+    input:
+        evidence=f"{private_root}/evidence/agnostic_coding.jsonl",
+        policy=config["policy"],
+    output:
+        f"{private_root}/ranking/agnostic_coding.ranked.json",
+    log:
+        f"{private_root}/logs/agnostic_coding_rank.log",
+    shell:
+        "mva rank {input.evidence:q} --policy {input.policy:q} --ranked-json {output:q} > {log:q}"
+
+
+rule render_agnostic_coding_review:
+    input:
+        f"{private_root}/ranking/agnostic_coding.ranked.json",
+    output:
+        f"{private_root}/ranking/agnostic_coding.review.md",
+    log:
+        f"{private_root}/logs/agnostic_coding_review.log",
+    shell:
+        "mva render-review {input:q} --output {output:q} > {log:q}"
+
+
+rule compare_small_variant_lanes:
+    input:
+        prior=f"{private_root}/ranking/mva_prior.ranked.json",
+        agnostic=f"{private_root}/ranking/agnostic_coding.ranked.json",
+    output:
+        f"{private_root}/ranking/small_variant.lane_comparison.md",
+    log:
+        f"{private_root}/logs/small_variant_comparison.log",
+    shell:
+        """
+        mva compare-rankings prior={input.prior:q} agnostic_coding={input.agnostic:q} \
+          --output {output:q} > {log:q}
+        """
+
+
+rule compare_benchmark_tools:
+    input:
+        baseline=f"{private_root}/benchmark/baseline.metrics.json",
+        candidate=f"{private_root}/benchmark/candidate.metrics.json",
+        union=f"{private_root}/benchmark/union.metrics.json",
+        policy="config/tool_comparison.yaml",
+    output:
+        f"{private_root}/benchmark/tool_comparison.json",
+    log:
+        f"{private_root}/logs/benchmark_comparison.log",
+    shell:
+        """
+        mva compare-benchmarks --baseline {input.baseline:q} --candidate {input.candidate:q} \
+          --union {input.union:q} --policy {input.policy:q} --output {output:q} > {log:q}
+        """
+
+
+rule wgs_command_smoke:
+    output:
+        f"{private_root}/wgs/smoke/wgs_tool_smoke.json",
+    log:
+        f"{private_root}/logs/wgs_tool_smoke.log",
+    params:
+        python=str(wgs_bin / "python"),
+    shell:
+        "{params.python:q} scripts/wgs_tool_smoke.py > {output:q} 2> {log:q}"
+
+
+rule deepvariant_coding_candidates:
+    input:
+        vcf=f"{private_root}/wgs/deepvariant/PROBAND01.phased.vcf.gz",
+        tbi=f"{private_root}/wgs/deepvariant/PROBAND01.phased.vcf.gz.tbi",
+        regions=config["references"]["coding_regions"],
+    output:
+        vcf=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vcf.gz",
+        tbi=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vcf.gz.tbi",
+    threads: config["threads"]["bcftools"]
+    log:
+        f"{private_root}/logs/deepvariant_coding.log",
+    shell:
+        """
+        bcftools view --threads {threads} --regions-file {input.regions:q} \
+          --output-type z --output {output.vcf:q} {input.vcf:q} 2> {log:q}
+        bcftools index --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
+        """
+
+
+rule annotate_deepvariant_coding_vep:
+    input:
+        vcf=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vcf.gz",
+        tbi=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vcf.gz.tbi",
+        cache="resources/vep/homo_sapiens/116_GRCh38/info.txt",
+    output:
+        vcf=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vep.vcf.gz",
+        tbi=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vep.vcf.gz.tbi",
+    threads: config["threads"]["vep"]
+    log:
+        f"{private_root}/logs/deepvariant_vep.log",
+    params:
+        cache=lambda wildcards, input: str(Path(input.cache).parents[2]),
+        perl=str(vep_bin / "perl"),
+        vep=str(vep_bin / "vep"),
+        bgzip=str(vep_bin / "bgzip"),
+        tabix=str(vep_bin / "tabix"),
+    shell:
+        """
+        {params.perl:q} {params.vep:q} --input_file {input.vcf:q} --output_file STDOUT \
+          --format vcf --vcf --offline --cache --cache_version 116 --assembly GRCh38 \
+          --dir_cache {params.cache:q} --symbol --canonical --mane --biotype \
+          --variant_class --numbers --af_gnomade --af_gnomadg --no_stats \
+          --force_overwrite --fork {threads} --buffer_size 50000 2> {log:q} \
+        | {params.bgzip:q} --threads {threads} > {output.vcf:q}
+        {params.tabix:q} --preset vcf {output.vcf:q}
+        """
+
+
+rule deepvariant_evidence:
+    input:
+        vcf=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vep.vcf.gz",
+        tbi=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vep.vcf.gz.tbi",
+        priors=phenotype_priors,
+    output:
+        f"{private_root}/wgs/evidence/deepvariant_coding.jsonl",
+    log:
+        f"{private_root}/logs/deepvariant_evidence.log",
+    shell:
+        """
+        mva vep-to-evidence {input.vcf:q} --gene-priors {input.priors:q} \
+          --phase-method read_backed --output {output:q} > {log:q}
+        """
+
+
+rule rank_deepvariant:
+    input:
+        evidence=f"{private_root}/wgs/evidence/deepvariant_coding.jsonl",
+        policy=config["policy"],
+    output:
+        f"{private_root}/wgs/ranking/deepvariant_coding.ranked.json",
+    log:
+        f"{private_root}/logs/deepvariant_rank.log",
+    shell:
+        "mva rank {input.evidence:q} --policy {input.policy:q} --ranked-json {output:q} > {log:q}"
+
+
+rule render_deepvariant_review:
+    input:
+        f"{private_root}/wgs/ranking/deepvariant_coding.ranked.json",
+    output:
+        f"{private_root}/wgs/ranking/deepvariant_coding.review.md",
+    log:
+        f"{private_root}/logs/deepvariant_review.log",
+    shell:
+        "mva render-review {input:q} --output {output:q} > {log:q}"
+
+
+rule compare_supplied_and_deepvariant:
+    input:
+        supplied=f"{private_root}/ranking/agnostic_coding.ranked.json",
+        deepvariant=f"{private_root}/wgs/ranking/deepvariant_coding.ranked.json",
+    output:
+        f"{private_root}/wgs/ranking/caller_comparison.md",
+    log:
+        f"{private_root}/logs/caller_comparison.log",
+    shell:
+        """
+        mva compare-rankings supplied={input.supplied:q} deepvariant={input.deepvariant:q} \
+          --output {output:q} > {log:q}
+        """
+
+
+rule supplied_deepvariant_vcf_stats:
+    input:
+        supplied=f"{private_root}/variants/agnostic.normalized.vcf.gz",
+        deepvariant=f"{private_root}/wgs/deepvariant/PROBAND01.normalized.vcf.gz",
+    output:
+        f"{private_root}/wgs/qc/supplied_vs_deepvariant.bcftools_stats.txt",
+    threads: config["threads"]["bcftools"]
+    log:
+        f"{private_root}/logs/callset_stats.log",
+    shell:
+        "bcftools stats --threads {threads} {input.supplied:q} {input.deepvariant:q} > {output:q} 2> {log:q}"

@@ -1,0 +1,26 @@
+version: "2026-08-25.1"
+assembly: GRCh38
+scope: >-
+  Explicit MVA-mechanism prior lane. These genes receive evidence, never a hard
+  inclusion filter; the agnostic lane is evaluated separately.
+sources:
+  ncbi_gene: "NCBI Datasets GRCh38.p14 annotation GCF_000001405.40-RS_2025_08"
+  bub1b_mva: "https://pubmed.ncbi.nlm.nih.gov/15475955/"
+  cep57_mva: "https://pmc.ncbi.nlm.nih.gov/articles/PMC3508359/"
+  trip13_mva: "https://pmc.ncbi.nlm.nih.gov/articles/PMC5493194/"
+genes:
+  - symbol: BUB1B
+    ncbi_gene_id: 701
+    region: "15:40156000-40227000"
+    phenotype_gene_score: 1.0
+    disease_mechanism_match: 1.0
+  - symbol: CEP57
+    ncbi_gene_id: 9702
+    region: "11:95785000-95838000"
+    phenotype_gene_score: 0.9
+    disease_mechanism_match: 1.0
+  - symbol: TRIP13
+    ncbi_gene_id: 9319
+    region: "5:887000-925000"
+    phenotype_gene_score: 0.9
+    disease_mechanism_match: 1.0

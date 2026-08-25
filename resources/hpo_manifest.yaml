@@ -1,0 +1,13 @@
+schema_version: "1.0"
+release: v2026-06-23
+source: https://github.com/obophenotype/human-phenotype-ontology/releases/tag/v2026-06-23
+assets:
+  hp.obo:
+    bytes: 11222341
+    sha256: a5092cbdf605f568403cf7380d9173014015692433b2cc631bc5c1b053876b1b
+  genes_to_phenotype.txt:
+    bytes: 20732778
+    sha256: 26cb7ee00c73b5777f6e5ad43323c941e1fcef1d191592f332d7929f3ea1ab3f
+use: >-
+  Local-only, versioned phenotype-to-gene semantic similarity. This public
+  knowledge resource does not contain challenge patient data.

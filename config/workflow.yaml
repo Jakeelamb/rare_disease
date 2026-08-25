@@ -1,0 +1,31 @@
+dataset_revision: "f534cb0c1a607110c6dad0194299bd3dd62df542"
+space_revision: "37e25dceda63ecec7c5b2ebeffd1ea0052ad886e"
+assembly: GRCh38
+inputs:
+  phenotype_glob: data/*.docx
+  phenotype_placeholder: data/phenotype.docx
+  vcf_glob: data/*.vcf.gz
+  vcf_placeholder: data/proband.vcf.gz
+  fastq_glob: data/*.fastq.gz
+references:
+  alignment_fasta: resources/reference/source_equivalent.no_chr.fasta
+  vep_cache: resources/vep
+  hpo_ontology: resources/hpo/hp.obo
+  hpo_gene_annotations: resources/hpo/genes_to_phenotype.txt
+  hpo_release: "v2026-06-23"
+  coding_regions: resources/vep/Ensembl.GRCh38.116.protein_coding_exons_plus20.bed
+  mechanism_priors: config/disease_priors.yaml
+policy: config/scoring_policy.yaml
+outputs:
+  private_root: results/private/work
+  public_root: results/public
+pixi:
+  environment_root: .pixi/envs
+threads:
+  bcftools: 8
+  vep: 12
+  alignment: 20
+  deepvariant: 20
+containers:
+  deepvariant: >-
+    google/deepvariant@sha256:962e5a83b1d76aae6990625d47102785f791603f2138aa1fa9aa4fb6a2eecbe6
