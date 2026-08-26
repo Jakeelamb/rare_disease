@@ -8,6 +8,13 @@
 
 This note is pinned to the revisions above because the challenge launched on 2026-08-24 and its rules, code, and timeline may still change. Re-check the live Space before every submission.
 
+**Implementation boundary:** Section 7 records evaluated workflow options, not
+a claim that every named tool is installed. The executable workflow is defined
+by the [README](../../README.md), [architecture](../architecture.md), and
+[Track 1 methods](../track1_methods.md). Exomiser, LIRICAL, Manta, and CNVnator
+remain documented research extensions; they are not part of the current Pixi
+DAG or current result.
+
 ## Executive conclusions
 
 1. This is a single-proband, two-track challenge built around a real child with Mosaic Variegated Aneuploidy (MVA). Track 1 asks for a ranked causal-variant list; Track 2 asks for mechanism-grounded hypotheses about already approved medicines. Track 2 proposals are explicitly hypotheses for follow-up, not evidence of efficacy or medical advice. [Official overview](https://huggingface.co/spaces/SageBio/rare-disease-real-kid-mva-hackathon-2026/blob/37e25dceda63ecec7c5b2ebeffd1ea0052ad886e/tabs/about.py)

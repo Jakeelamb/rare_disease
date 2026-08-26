@@ -77,6 +77,38 @@ a5092cbdf605f568403cf7380d9173014015692433b2cc631bc5c1b053876b1b  resources/hpo/
 CHECKSUMS
 ```
 
+## ClinVar
+
+Final candidate review uses the archived August 2026 ClinVar variant summary,
+downloaded in full so no patient coordinate is sent to a hosted query service:
+
+```bash
+mkdir -p resources/clinvar
+curl --fail --location --continue-at - \
+  'https://ftp.ncbi.nlm.nih.gov/pub/clinvar/tab_delimited/archive/variant_summary_2026-08.txt.gz' \
+  --output resources/clinvar/variant_summary_2026-08.txt.gz
+sha256sum --check resources/clinvar_manifest.sha256
+```
+
+## AlphaMissense
+
+The Google DeepMind v2023 GRCh38 catalogue is downloaded wholesale and queried
+locally. The current official repository states that predictions are CC BY
+4.0, while the unchanged file header still names the older CC BY-NC-SA 4.0
+terms. Do not redistribute the file; re-check the provider's current terms
+before publication. Scores are research evidence, not clinical
+classifications:
+
+```bash
+mkdir -p resources/alphamissense
+curl --fail --location --continue-at - \
+  'https://storage.googleapis.com/dm_alphamissense/AlphaMissense_hg38.tsv.gz' \
+  --output resources/alphamissense/AlphaMissense_hg38.tsv.gz
+sha256sum --check resources/alphamissense_manifest.sha256
+pixi run -e vep tabix --sequence 1 --begin 2 --end 2 --skip-lines 3 \
+  resources/alphamissense/AlphaMissense_hg38.tsv.gz
+```
+
 ## Alignment reference
 
 The source VCF names

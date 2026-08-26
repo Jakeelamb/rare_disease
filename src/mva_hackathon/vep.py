@@ -21,6 +21,7 @@ from .models import (
 )
 
 CSQ_HEADER = re.compile(r"ID=CSQ.*?Format: ([^\"]+)")
+PREDICTION_SCORE = re.compile(r"\(([0-9]+(?:\.[0-9]+)?)\)")
 
 
 def _first_scalar(value: Any) -> Any:
@@ -99,6 +100,18 @@ def _max_annotation_float(
     return max(values) if values else None
 
 
+def _max_prediction_score(
+    annotations: list[dict[str, str]], field: str, *, invert: bool = False
+) -> float | None:
+    scores = [
+        float(match.group(1))
+        for annotation in annotations
+        if (match := PREDICTION_SCORE.search(annotation.get(field, ""))) is not None
+    ]
+    transformed = [1.0 - score if invert else score for score in scores]
+    return max(transformed) if transformed else None
+
+
 def _first_annotation_int(annotations: list[dict[str, str]], fields: tuple[str, ...]) -> int | None:
     for annotation in annotations:
         for field in fields:
@@ -164,6 +177,9 @@ def vep_to_evidence(
 
         for gene, gene_annotations in annotations_by_gene.items():
             preferred = _preferred_annotation(gene_annotations)
+            alphamissense = _max_annotation_float(
+                gene_annotations, ("am_pathogenicity", "AlphaMissense")
+            )
             sources: list[SourceReference] = [
                 SourceReference(
                     source="Ensembl VEP",
@@ -185,11 +201,22 @@ def vep_to_evidence(
                         record_id=gene,
                     )
                 )
+            if alphamissense is not None:
+                sources.append(
+                    SourceReference(
+                        source="AlphaMissense",
+                        release="v2023",
+                        record_id=preferred.get("HGVSp") or preferred.get("Feature") or None,
+                        url="https://github.com/google-deepmind/alphamissense",
+                    )
+                )
             transcript_evidence = tuple(
                 TranscriptConsequence(
                     transcript=annotation.get("Feature") or None,
                     consequence=annotation["Consequence"],
                     biotype=annotation.get("BIOTYPE") or None,
+                    exon=annotation.get("EXON") or None,
+                    intron=annotation.get("INTRON") or None,
                     canonical=annotation.get("CANONICAL") == "YES",
                     mane_select=annotation.get("MANE_SELECT") or None,
                     hgvsc=annotation.get("HGVSc") or None,
@@ -271,9 +298,11 @@ def vep_to_evidence(
                                 "SpliceAI_pred_DS_DL",
                             ),
                         ),
-                        alphamissense=_max_annotation_float(
-                            gene_annotations, ("am_pathogenicity", "AlphaMissense")
+                        alphamissense=alphamissense,
+                        sift_deleteriousness=_max_prediction_score(
+                            gene_annotations, "SIFT", invert=True
                         ),
+                        polyphen_damagingness=_max_prediction_score(gene_annotations, "PolyPhen"),
                         phenotype_gene_score=phenotype_priors.get(gene, 0.0),
                         disease_mechanism_match=mechanism_priors.get(gene, 0.0),
                         sources=tuple(sources),

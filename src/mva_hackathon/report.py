@@ -34,6 +34,38 @@ def render_ranked_case(ranked: RankedCase, limit: int = 10) -> str:
                 f"- Phase: `{candidate.phase_status.value}`",
                 f"- Cautions: {'; '.join(candidate.cautions) or 'none recorded'}",
                 "",
+                "| Allele | MANE RefSeq / Ensembl | Exon/intron | HGVSc | HGVSp | "
+                "SIFT deleteriousness | "
+                "PolyPhen damagingness | AlphaMissense |",
+                "|---|---|---|---|---|---:|---:|---:|",
+            ]
+        )
+        for variant in candidate.variants:
+            mane = next(
+                (item for item in variant.annotation.transcripts if item.mane_select),
+                next(iter(variant.annotation.transcripts), None),
+            )
+            mane_transcript = (
+                f"{mane.mane_select or 'unavailable'} / {mane.transcript or 'unavailable'}"
+                if mane
+                else "unavailable"
+            )
+            sift = variant.annotation.sift_deleteriousness
+            polyphen = variant.annotation.polyphen_damagingness
+            alphamissense = variant.annotation.alphamissense
+            exon_or_intron = mane.exon or mane.intron or "unavailable" if mane else "unavailable"
+            lines.append(
+                f"| `{variant.key.label}` | `{mane_transcript}` | "
+                f"`{exon_or_intron}` | "
+                f"`{mane.hgvsc if mane and mane.hgvsc else 'unavailable'}` | "
+                f"`{mane.hgvsp if mane and mane.hgvsp else 'unavailable'}` | "
+                f"{sift if sift is not None else 'unavailable'} | "
+                f"{polyphen if polyphen is not None else 'unavailable'} | "
+                f"{alphamissense if alphamissense is not None else 'unavailable'} |"
+            )
+        lines.extend(
+            [
+                "",
                 "| Term | Raw | Weight | Points | Rationale |",
                 "|---|---:|---:|---:|---|",
             ]

@@ -9,6 +9,15 @@ from typing import Annotated
 import typer
 from rich.console import Console
 
+from .adjudication import (
+    ClinVarCandidateQuery,
+    build_leading_adjudication,
+    inspect_exact_vcf_calls,
+    leading_variant_keys,
+    query_clinvar_archive,
+    write_clinvar_query,
+    write_leading_adjudication,
+)
 from .benchmark import (
     compare_tool_metrics,
     load_comparison_policy,
@@ -35,6 +44,7 @@ from .policy import load_policy
 from .privacy import audit_public_tree
 from .provenance import build_run_manifest, write_manifest
 from .ranking import rank_case
+from .read_evidence import CandidateReadAudit, inspect_ranked_bam, write_candidate_read_audit
 from .report import write_ranked_case_report
 from .submission import validate_submission
 from .vcf import inspect_vcf
@@ -296,3 +306,123 @@ def render_review_command(
     ranked = RankedCase.model_validate_json(ranked_json.read_text(encoding="utf-8"))
     write_ranked_case_report(ranked, output, limit=limit)
     console.print(json.dumps({"report": str(output), "rendered_hypotheses": limit}, indent=2))
+
+
+@app.command("candidate-read-audit")
+def candidate_read_audit_command(
+    ranked_json: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    bam: Annotated[Path, typer.Option("--bam", exists=True, dir_okay=False, readable=True)],
+    json_output: Annotated[Path, typer.Option("--json-output")],
+    review_output: Annotated[Path, typer.Option("--review-output")],
+    limit: Annotated[int, typer.Option("--limit", min=1, max=50)] = 10,
+    min_mapping_quality: Annotated[int, typer.Option("--min-mapping-quality", min=0)] = 20,
+    min_base_quality: Annotated[int, typer.Option("--min-base-quality", min=0)] = 20,
+    min_phase_support_fragments: Annotated[
+        int, typer.Option("--min-phase-support-fragments", min=1)
+    ] = 2,
+) -> None:
+    """Inspect leading variants directly in a local indexed BAM."""
+    ranked = RankedCase.model_validate_json(ranked_json.read_text(encoding="utf-8"))
+    audit = inspect_ranked_bam(
+        ranked,
+        bam,
+        limit=limit,
+        min_mapping_quality=min_mapping_quality,
+        min_base_quality=min_base_quality,
+        min_phase_support_fragments=min_phase_support_fragments,
+    )
+    write_candidate_read_audit(audit, json_output=json_output, review_output=review_output)
+    console.print(
+        json.dumps(
+            {
+                "audited_alleles": len(audit.alleles),
+                "audited_pairs": len(audit.pairs),
+                "review": str(review_output),
+            },
+            indent=2,
+        )
+    )
+
+
+@app.command("query-candidate-clinvar")
+def query_candidate_clinvar_command(
+    ranked_json: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    archive: Annotated[Path, typer.Option("--archive", exists=True, dir_okay=False, readable=True)],
+    release: Annotated[str, typer.Option("--release")],
+    output: Annotated[Path, typer.Option("--output", "-o")],
+    hypothesis_limit: Annotated[int, typer.Option("--hypothesis-limit", min=1, max=10)] = 3,
+) -> None:
+    """Query a local ClinVar archive for exact leading-candidate GRCh38 alleles."""
+    ranked = RankedCase.model_validate_json(ranked_json.read_text(encoding="utf-8"))
+    variants = leading_variant_keys(ranked, hypothesis_limit=hypothesis_limit)
+    query = query_clinvar_archive(variants, archive, release=release)
+    write_clinvar_query(query, output)
+    console.print(
+        json.dumps(
+            {
+                "queried_variants": len(query.queried_variants),
+                "exact_matches": len(query.matches),
+                "output": str(output),
+            },
+            indent=2,
+        )
+    )
+
+
+@app.command("adjudicate-leading")
+def adjudicate_leading_command(
+    focused_json: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True)],
+    rankings: Annotated[list[str], typer.Option("--ranking", help="Repeat LABEL=RANKED_JSON")],
+    recall_vcf: Annotated[
+        Path, typer.Option("--recall-vcf", exists=True, dir_okay=False, readable=True)
+    ],
+    read_audit_json: Annotated[
+        Path, typer.Option("--read-audit", exists=True, dir_okay=False, readable=True)
+    ],
+    clinvar_json: Annotated[
+        Path, typer.Option("--clinvar", exists=True, dir_okay=False, readable=True)
+    ],
+    json_output: Annotated[Path, typer.Option("--json-output")],
+    review_output: Annotated[Path, typer.Option("--review-output")],
+    recall_label: Annotated[str, typer.Option("--recall-label")] = "DeepVariant+WhatsHap",
+) -> None:
+    """Integrate exact local evidence into a private manual review card."""
+    focused = RankedCase.model_validate_json(focused_json.read_text(encoding="utf-8"))
+    lanes: dict[str, RankedCase] = {}
+    for item in rankings:
+        label, separator, raw_path = item.partition("=")
+        path = Path(raw_path)
+        if not separator or not label or not path.is_file():
+            raise typer.BadParameter(f"ranking must be LABEL=existing.json: {item}")
+        if label in lanes:
+            raise typer.BadParameter(f"duplicate ranking label: {label}")
+        lanes[label] = RankedCase.model_validate_json(path.read_text(encoding="utf-8"))
+    if not focused.candidates:
+        raise typer.BadParameter("focused ranking has no candidate")
+    keys = tuple(variant.key for variant in focused.candidates[0].variants)
+    recall_calls = inspect_exact_vcf_calls(recall_vcf, keys, caller=recall_label)
+    read_audit = CandidateReadAudit.model_validate_json(read_audit_json.read_text(encoding="utf-8"))
+    clinvar = ClinVarCandidateQuery.model_validate_json(clinvar_json.read_text(encoding="utf-8"))
+    adjudication = build_leading_adjudication(
+        focused,
+        lanes,
+        recall_calls,
+        read_audit,
+        clinvar,
+    )
+    write_leading_adjudication(
+        adjudication,
+        json_output=json_output,
+        review_output=review_output,
+    )
+    console.print(
+        json.dumps(
+            {
+                "gene": adjudication.leading_candidate.gene,
+                "recall_status": adjudication.recall_status,
+                "phase": adjudication.recall_pair_phase,
+                "review": str(review_output),
+            },
+            indent=2,
+        )
+    )

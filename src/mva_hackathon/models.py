@@ -109,6 +109,8 @@ class TranscriptConsequence(BaseModel):
     transcript: str | None = None
     consequence: str
     biotype: str | None = None
+    exon: str | None = None
+    intron: str | None = None
     canonical: bool = False
     mane_select: str | None = None
     hgvsc: str | None = None
@@ -131,6 +133,8 @@ class VariantAnnotation(BaseModel):
     revel: Probability | None = None
     spliceai: Probability | None = None
     alphamissense: Probability | None = None
+    sift_deleteriousness: Probability | None = None
+    polyphen_damagingness: Probability | None = None
     phenotype_gene_score: Probability = 0.0
     disease_mechanism_match: Probability = 0.0
     sources: tuple[SourceReference, ...] = ()

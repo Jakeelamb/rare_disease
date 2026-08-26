@@ -4,6 +4,16 @@ wgs_root = f"{private_root}/wgs"
 wgs_reference = config["references"]["alignment_fasta"]
 wgs_lane_bams = expand(f"{wgs_root}/alignment/{{lane}}.name.bam", lane=lanes)
 deepvariant_image = config["containers"]["deepvariant"]
+read_audit = config["read_audit"]
+phase_contigs = tuple([str(chromosome) for chromosome in range(1, 23)] + ["X", "Y", "M"])
+phase_shard_vcfs = expand(
+    f"{wgs_root}/deepvariant/phasing/{{phase_contig}}.phased.vcf.gz",
+    phase_contig=phase_contigs,
+)
+phase_shard_tbis = expand(
+    f"{wgs_root}/deepvariant/phasing/{{phase_contig}}.phased.vcf.gz.tbi",
+    phase_contig=phase_contigs,
+)
 
 
 rule wgs_recall:
@@ -14,13 +24,18 @@ rule wgs_recall:
         f"{wgs_root}/deepvariant/PROBAND01.phased.vcf.gz.tbi",
         f"{wgs_root}/qc/PROBAND01.whatshap.tsv",
         f"{wgs_root}/qc/PROBAND01.flagstat.txt",
+        f"{wgs_root}/qc/leading_candidate_reads.json",
+        f"{wgs_root}/qc/leading_candidate_reads.review.md",
 
 
 rule wgs_comparison:
     input:
         f"{wgs_root}/qc/supplied_vs_deepvariant.bcftools_stats.txt",
+        f"{wgs_root}/qc/agnostic_top30_reads.review.md",
         f"{wgs_root}/ranking/deepvariant_coding.review.md",
         f"{wgs_root}/ranking/caller_comparison.md",
+        f"{wgs_root}/adjudication/leading_candidate.json",
+        f"{wgs_root}/adjudication/leading_candidate.review.md",
 
 
 rule index_wgs_reference:
@@ -128,6 +143,56 @@ rule mark_duplicates:
         """
 
 
+rule audit_leading_candidate_reads:
+    input:
+        bam=f"{wgs_root}/alignment/PROBAND01.markdup.bam",
+        bai=f"{wgs_root}/alignment/PROBAND01.markdup.bam.bai",
+        ranked=f"{private_root}/ranking/mva_prior.ranked.json",
+        code="src/mva_hackathon/read_evidence.py",
+    output:
+        json=f"{wgs_root}/qc/leading_candidate_reads.json",
+        review=f"{wgs_root}/qc/leading_candidate_reads.review.md",
+    log:
+        f"{private_root}/logs/leading_candidate_reads.log",
+    params:
+        min_mapping_quality=read_audit["min_mapping_quality"],
+        min_base_quality=read_audit["min_base_quality"],
+        min_phase_support_fragments=read_audit["min_phase_support_fragments"],
+    shell:
+        """
+        mva candidate-read-audit {input.ranked:q} --bam {input.bam:q} \
+          --json-output {output.json:q} --review-output {output.review:q} \
+          --limit 3 --min-mapping-quality {params.min_mapping_quality} \
+          --min-base-quality {params.min_base_quality} \
+          --min-phase-support-fragments {params.min_phase_support_fragments} > {log:q}
+        """
+
+
+rule audit_agnostic_candidate_reads:
+    input:
+        bam=f"{wgs_root}/alignment/PROBAND01.markdup.bam",
+        bai=f"{wgs_root}/alignment/PROBAND01.markdup.bam.bai",
+        ranked=f"{private_root}/ranking/agnostic_coding.ranked.json",
+        code="src/mva_hackathon/read_evidence.py",
+    output:
+        json=f"{wgs_root}/qc/agnostic_top30_reads.json",
+        review=f"{wgs_root}/qc/agnostic_top30_reads.review.md",
+    log:
+        f"{private_root}/logs/agnostic_top30_reads.log",
+    params:
+        min_mapping_quality=read_audit["min_mapping_quality"],
+        min_base_quality=read_audit["min_base_quality"],
+        min_phase_support_fragments=read_audit["min_phase_support_fragments"],
+    shell:
+        """
+        mva candidate-read-audit {input.ranked:q} --bam {input.bam:q} \
+          --json-output {output.json:q} --review-output {output.review:q} \
+          --limit 30 --min-mapping-quality {params.min_mapping_quality} \
+          --min-base-quality {params.min_base_quality} \
+          --min-phase-support-fragments {params.min_phase_support_fragments} > {log:q}
+        """
+
+
 rule deepvariant_cpu:
     input:
         reference=wgs_reference,
@@ -186,22 +251,110 @@ rule normalize_deepvariant:
         {params.bcftools:q} norm --threads {threads} --multiallelics -any \
           --fasta-ref {input.reference:q} --output-type z --output {output.vcf:q} \
           {input.vcf:q} 2> {log:q}
-        {params.bcftools:q} index --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
+        {params.bcftools:q} index --force --threads {threads} --tbi \
+          {output.vcf:q} 2>> {log:q}
         """
 
 
-rule phase_deepvariant:
+rule split_deepvariant_phase_contig:
     input:
         vcf=f"{wgs_root}/deepvariant/PROBAND01.normalized.vcf.gz",
         tbi=f"{wgs_root}/deepvariant/PROBAND01.normalized.vcf.gz.tbi",
+    output:
+        vcf=temp(f"{wgs_root}/deepvariant/phasing/{{phase_contig}}.input.vcf.gz"),
+        tbi=temp(f"{wgs_root}/deepvariant/phasing/{{phase_contig}}.input.vcf.gz.tbi"),
+    threads: 1
+    priority:
+        lambda wildcards: 100 if wildcards.phase_contig == "15" else 0
+    log:
+        f"{private_root}/logs/whatshap_split_{{phase_contig}}.log",
+    params:
+        bcftools=str(phasing_bin / "bcftools"),
+        output_dir=f"{wgs_root}/deepvariant/phasing",
+    wildcard_constraints:
+        phase_contig=r"(?:[1-9]|1[0-9]|2[0-2]|X|Y|M)",
+    shell:
+        """
+        mkdir -p {params.output_dir:q}
+        {params.bcftools:q} view --regions {wildcards.phase_contig:q} \
+          --output-type z --output {output.vcf:q} {input.vcf:q} 2> {log:q}
+        {params.bcftools:q} index --force --tbi --output {output.tbi:q} \
+          {output.vcf:q} 2>> {log:q}
+        """
+
+
+rule phase_deepvariant_contig:
+    input:
+        vcf=f"{wgs_root}/deepvariant/phasing/{{phase_contig}}.input.vcf.gz",
+        tbi=f"{wgs_root}/deepvariant/phasing/{{phase_contig}}.input.vcf.gz.tbi",
         bam=f"{wgs_root}/alignment/PROBAND01.markdup.bam",
         bai=f"{wgs_root}/alignment/PROBAND01.markdup.bam.bai",
         reference=wgs_reference,
         fai=f"{wgs_reference}.fai",
     output:
+        vcf=temp(f"{wgs_root}/deepvariant/phasing/{{phase_contig}}.phased.vcf.gz"),
+        tbi=temp(f"{wgs_root}/deepvariant/phasing/{{phase_contig}}.phased.vcf.gz.tbi"),
+    threads: 1
+    priority:
+        lambda wildcards: 100 if wildcards.phase_contig == "15" else 0
+    resources:
+        mem_mb=12000,
+    log:
+        f"{private_root}/logs/whatshap_{{phase_contig}}.log",
+    params:
+        whatshap=str(phasing_bin / "whatshap"),
+        bcftools=str(phasing_bin / "bcftools"),
+    wildcard_constraints:
+        phase_contig=r"(?:[1-9]|1[0-9]|2[0-2]|X|Y|M)",
+    shell:
+        """
+        if [ "$({params.bcftools:q} index --nrecords {input.vcf:q})" -eq 0 ]; then
+          cp {input.vcf:q} {output.vcf:q}
+          : > {log:q}
+        else
+          {params.whatshap:q} phase --reference {input.reference:q} --sample PROBAND01 \
+            --output {output.vcf:q} {input.vcf:q} {input.bam:q} > {log:q} 2>&1
+        fi
+        {params.bcftools:q} index --force --tbi --output {output.tbi:q} \
+          {output.vcf:q} 2>> {log:q}
+        """
+
+
+rule retain_unphased_nonprimary_calls:
+    input:
+        vcf=f"{wgs_root}/deepvariant/PROBAND01.normalized.vcf.gz",
+        tbi=f"{wgs_root}/deepvariant/PROBAND01.normalized.vcf.gz.tbi",
+    output:
+        vcf=temp(f"{wgs_root}/deepvariant/phasing/nonprimary.unphased.vcf.gz"),
+        tbi=temp(f"{wgs_root}/deepvariant/phasing/nonprimary.unphased.vcf.gz.tbi"),
+    threads: 1
+    log:
+        f"{private_root}/logs/whatshap_nonprimary.log",
+    params:
+        bcftools=str(phasing_bin / "bcftools"),
+        excluded_primary="^" + ",".join(phase_contigs),
+        output_dir=f"{wgs_root}/deepvariant/phasing",
+    shell:
+        """
+        mkdir -p {params.output_dir:q}
+        {params.bcftools:q} view --targets {params.excluded_primary:q} \
+          --output-type z --output {output.vcf:q} {input.vcf:q} 2> {log:q}
+        {params.bcftools:q} index --force --tbi --output {output.tbi:q} \
+          {output.vcf:q} 2>> {log:q}
+        """
+
+
+rule phase_deepvariant:
+    input:
+        phased=phase_shard_vcfs,
+        phased_indexes=phase_shard_tbis,
+        nonprimary=f"{wgs_root}/deepvariant/phasing/nonprimary.unphased.vcf.gz",
+        nonprimary_tbi=f"{wgs_root}/deepvariant/phasing/nonprimary.unphased.vcf.gz.tbi",
+    output:
         vcf=f"{wgs_root}/deepvariant/PROBAND01.phased.vcf.gz",
         tbi=f"{wgs_root}/deepvariant/PROBAND01.phased.vcf.gz.tbi",
         stats=f"{wgs_root}/qc/PROBAND01.whatshap.tsv",
+    threads: config["threads"]["bcftools"]
     log:
         f"{private_root}/logs/whatshap.log",
     params:
@@ -209,9 +362,10 @@ rule phase_deepvariant:
         bcftools=str(phasing_bin / "bcftools"),
     shell:
         """
-        {params.whatshap:q} phase --reference {input.reference:q} --sample PROBAND01 \
-          --output {output.vcf:q} {input.vcf:q} {input.bam:q} > {log:q} 2>&1
-        {params.bcftools:q} index --tbi {output.vcf:q} 2>> {log:q}
+        {params.bcftools:q} concat --threads {threads} --output-type z \
+          --output {output.vcf:q} {input.phased:q} {input.nonprimary:q} 2> {log:q}
+        {params.bcftools:q} index --force --tbi --output {output.tbi:q} \
+          {output.vcf:q} 2>> {log:q}
         {params.whatshap:q} stats --sample PROBAND01 --tsv {output.stats:q} \
           {output.vcf:q} >> {log:q} 2>&1
         """

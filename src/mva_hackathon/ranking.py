@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections import defaultdict
 from itertools import combinations
 
@@ -87,13 +88,14 @@ def _consequence(variant: VariantEvidence, policy: ScoringPolicy) -> ScoreContri
 
 def _clinical(variant: VariantEvidence, policy: ScoringPolicy) -> ScoreContribution:
     significance = (variant.annotation.clinvar_significance or "unknown").lower()
+    normalized_significance = re.sub(r"[^a-z0-9]+", "_", significance).strip("_")
     matched = next(
         (
             score
             for label, score in sorted(
                 policy.clinvar_scores.items(), key=lambda item: len(item[0]), reverse=True
             )
-            if label in significance
+            if label in normalized_significance
         ),
         policy.clinvar_scores.get("unknown", 0.0),
     )
@@ -117,6 +119,13 @@ def _pathogenicity(variant: VariantEvidence, policy: ScoringPolicy) -> ScoreCont
         values.append(("SpliceAI", ann.spliceai))
     if ann.alphamissense is not None:
         values.append(("AlphaMissense", ann.alphamissense))
+    native_missense = [
+        value
+        for value in (ann.sift_deleteriousness, ann.polyphen_damagingness)
+        if value is not None
+    ]
+    if native_missense:
+        values.append(("VEP missense consensus", sum(native_missense) / len(native_missense)))
     if not values:
         return _contribution(
             "pathogenicity",
@@ -222,13 +231,27 @@ def _missing_evidence_caution(variant: VariantEvidence) -> str | None:
         missing.append("allele balance")
     if annotation.max_population_af is None:
         missing.append("population AF")
-    if all(
+    consequences = set(annotation.consequence.lower().split("&"))
+    predictor_exempt = bool(
+        consequences
+        & {
+            "transcript_ablation",
+            "splice_acceptor_variant",
+            "splice_donor_variant",
+            "stop_gained",
+            "frameshift_variant",
+            "start_lost",
+        }
+    )
+    if not predictor_exempt and all(
         value is None
         for value in (
             annotation.cadd_phred,
             annotation.revel,
             annotation.spliceai,
             annotation.alphamissense,
+            annotation.sift_deleteriousness,
+            annotation.polyphen_damagingness,
         )
     ):
         missing.append("pathogenicity predictors")

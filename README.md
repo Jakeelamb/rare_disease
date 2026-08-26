@@ -15,16 +15,19 @@ all row-level results stay under ignored local directories.
 - explicit manual phenotype curation before HPO-to-gene scoring;
 - a disease-prior lane and an agnostic coding/splice lane;
 - typed variant evidence, exact same-gene pair construction, visible score
-  decomposition, missing-evidence handling, and phase cautions;
+  decomposition, MANE/HGVS transcript evidence, native SIFT/PolyPhen missense
+  support, local AlphaMissense neural scores, missing-evidence handling,
+  supplied-caller physical phasing, and phase cautions;
 - union-first comparisons across ranking lanes and advisory truth-set metrics
   across callers;
 - a repaired BWA-MEM2/Samtools/DeepVariant/WhatsHap WGS lane;
 - synthetic workflow, RTG vcfeval, WGS-command, and phasing smoke tests.
 
-The Pixi migration is tested on synthetic data, and the real intake/QC stage
-has completed against the full local challenge payload. The full patient-scale
-WGS recall has not been run through this version of the workflow. Current and
-historical aggregate evidence are separated in [run status](docs/run_status.md).
+The Pixi workflow is tested on synthetic data, and both real intake/QC and the
+patient-scale WGS recall have completed against the full local challenge
+payload. Case-neutral aggregate execution evidence is recorded in
+[run status](docs/run_status.md); exact variants and row-level results remain in
+ignored private artifacts.
 
 ## Pixi setup
 
@@ -46,6 +49,7 @@ pixi run check
 pixi run -e benchmark benchmark-tool-smoke
 pixi run -e wgs wgs-tool-smoke
 pixi run -e phasing phasing-tool-smoke
+pixi run -e phasing phasing-scatter-smoke
 ```
 
 ## Restricted dataset
@@ -108,6 +112,18 @@ pixi run mva curate-phenotype \
 Repeat `--decision` for every extracted row, then continue:
 
 ```bash
+pixi run mva render-phenotype-review \
+  results/private/work/phenotype/phenotype.curated.json \
+  --output results/private/work/phenotype/phenotype.curated.review.md
+```
+
+Inspect the curated worksheet before continuing:
+
+- `results/private/work/phenotype/phenotype.curated.review.md`
+
+Then run:
+
+```bash
 pixi run phenotype-scoring
 pixi run small-variant
 ```
@@ -146,10 +162,36 @@ pixi run wgs-comparison
 
 `wgs-recall` is the expensive patient-scale path. It aligns all lanes, marks
 duplicates, runs the digest-pinned DeepVariant CPU container without network
-access, then normalizes and read-phases calls. Run it only when that compute is
-intended. `wgs-comparison` is a separate downstream target that requires the
+access, normalizes and read-phases calls, and writes a candidate-level BAM
+evidence card with allele balance, strand support, mapping/base quality, and
+proper-pair, clipping, read-position, and spanning-fragment phase counts. Run
+it only when that compute is intended.
+`wgs-comparison` is a separate downstream target that requires the
 manually curated phenotype, ranks DeepVariant coding/splice candidates, and
-writes the supplied-callset-versus-DeepVariant discrepancy report.
+writes the supplied-callset-versus-DeepVariant discrepancy report. It also
+audits the top 30 agnostic hypotheses against the BAM so nearby cis pairs and
+poor exact-pileup representations remain visible rather than silently outranking
+a cleaner candidate. It then
+queries the pinned full ClinVar archive locally and writes
+`wgs/adjudication/leading_candidate.review.md`: an exact-pair evidence matrix
+covering lane ranks, transcript notation, caller genotypes, direct BAM support,
+phase, population frequency, ClinVar review status, and missense predictors.
+The adjacent JSON preserves the same evidence for further research.
+
+## Submission-facing documentation
+
+- [Track 1 methods](docs/track1_methods.md) is the concise, case-neutral
+  methods writeup for reviewers.
+- [Architecture](docs/architecture.md) records the workflow seams and manual
+  inspection gates.
+- [Run status](docs/run_status.md) separates verified execution evidence from
+  unresolved scientific limitations.
+- [Challenge contract](docs/challenge_contract.md) pins the official schema,
+  scoring, privacy, and release constraints used by this repository.
+
+The prediction CSV and case-specific report are prepared outside Git under
+`results/private/submission/`. They are uploaded manually through the official
+Space and are never generated or transmitted by this repository.
 
 ## Manual submission boundary
 
@@ -172,4 +214,17 @@ and deletion requirements summarized in
 This is research software, not a clinical diagnostic system. See the
 [architecture](docs/architecture.md) and pinned
 [challenge and methods evidence brief](docs/research/challenge_and_methods.md)
-for assumptions, sources, and unresolved limitations.
+for assumptions, sources, and unresolved limitations. The concise,
+competition-ready public writeup is [Track 1 methods](docs/track1_methods.md).
+
+## License and acknowledgement
+
+This work is released under [CC BY 4.0](LICENSE).
+
+This work was made possible through the Hackathon, organized by Sage
+Bionetworks in partnership with the MVA Society, Hugging Face, and BEACON (The
+Benchmarking, Evaluation, and Assessment Consortium for Science), with prize
+sponsorship from AWS and Anthropic. We are deeply grateful to the child and
+their family who generously contributed their data and their story to advance
+research into this rare disease. We acknowledge their trust in making this
+Hackathon possible.

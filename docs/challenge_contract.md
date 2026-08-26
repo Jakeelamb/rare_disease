@@ -4,6 +4,11 @@
 **Space revision:** `37e25dceda63ecec7c5b2ebeffd1ea0052ad886e`<br>
 **Dataset revision:** `f534cb0c1a607110c6dad0194299bd3dd62df542`
 
+Live drift check on 2026-08-26: Space HEAD was
+`d27c33953ecb0cfd7fa316c7cd93ff0ffb05cc1d`. Its Track 1 delta from the
+pinned release only changed template links to download buttons; the evaluator,
+CSV template, and scoring semantics were unchanged.
+
 This is an engineering checklist derived from the pinned official challenge
 code and rules. The [full evidence brief](research/challenge_and_methods.md)
 contains links and scorer details. Re-check the live rules before every upload.

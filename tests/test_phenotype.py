@@ -5,6 +5,7 @@ from mva_hackathon.phenotype import (
     PhenotypeObservation,
     curate_phenotype,
     normalize_hpo_id,
+    render_phenotype_review,
     validate_phenotype_curation,
 )
 
@@ -63,3 +64,7 @@ def test_manual_curation_requires_an_explicit_decision_for_every_row() -> None:
     assert curated.observations[0].present
     assert curated.observations[1].subject == "family"
     assert not curated.observations[1].present
+
+    review = render_phenotype_review(curated)
+    assert "| proband_present |" in review
+    assert "| family_absent |" in review

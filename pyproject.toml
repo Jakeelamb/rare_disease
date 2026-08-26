@@ -106,8 +106,8 @@ phenotype-scoring = "snakemake --snakefile workflow/Snakefile --cores 4 phenotyp
 small-variant = "snakemake --snakefile workflow/Snakefile --cores 12 small_variant"
 benchmark = "snakemake --snakefile workflow/Snakefile --cores 4 benchmark"
 wgs-smoke = "snakemake --snakefile workflow/Snakefile --cores 4 wgs_smoke"
-wgs-recall = "snakemake --snakefile workflow/Snakefile --cores 20 wgs_recall"
-wgs-comparison = "snakemake --snakefile workflow/Snakefile --cores 12 wgs_comparison"
+wgs-recall = "snakemake --snakefile workflow/Snakefile --cores 20 wgs_recall --resources mem_mb=80000"
+wgs-comparison = "snakemake --snakefile workflow/Snakefile --cores 12 wgs_comparison --resources mem_mb=80000"
 check = { depends-on = ["privacy-audit", "test", "lint", "format-check", "typecheck", "workflow-smoke"] }
 
 [tool.pixi.environments.vep]
@@ -164,3 +164,4 @@ samtools = ">=1.23,<1.24"
 
 [tool.pixi.environments.phasing.tasks]
 phasing-tool-smoke = "whatshap --version"
+phasing-scatter-smoke = "python scripts/phasing_scatter_smoke.py"

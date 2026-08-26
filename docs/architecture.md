@@ -20,6 +20,8 @@ flowchart LR
     P[Restricted phenotype DOCX] --> Q[Local extraction]
     Q --> R[Manual row curation]
     H[Pinned public HPO] --> S[Phenotype gene scores]
+    K[Pinned VEP cache and AlphaMissense] --> D
+    K --> E
     R --> S
     B --> C[Supplied-callset normalization]
     C --> D[MVA-prior annotation lane]
@@ -28,9 +30,12 @@ flowchart LR
     E --> F
     F --> G[Union-first lane comparison]
     A --> W[BWA-MEM2 and DeepVariant]
+    W --> J[Candidate BAM read audit]
     W --> X[WhatsHap read phasing]
     X --> Y[Independent typed pair ranking]
-    Y --> Z[Supplied versus recalled comparison]
+    Y --> Z[Caller comparison and final adjudication]
+    N[Pinned local ClinVar archive] --> Z
+    J --> Z
     T[Public truth set] --> U[RTG vcfeval metrics]
     U --> V[Advisory caller comparison]
 ```
@@ -75,6 +80,26 @@ The supplied callset, disease-prior scan, agnostic coding/splice scan, and
 DeepVariant recall remain separate artifacts. Ranking comparisons start from
 the union of hypotheses and preserve lane provenance. Agreement is evidence;
 disagreement becomes a review queue and is never averaged away.
+
+The supplied caller's physical `PID/PGT` blocks and WhatsHap read-backed blocks
+are carried as explicit phase methods, so known-cis pairs are removed while
+unphased pairs remain unresolved. AlphaMissense is kept as one neural evidence
+source beside a single SIFT/PolyPhen consensus; correlated predictors are not
+counted as independent votes.
+
+The final private adjudication seam does no majority vote and assigns no
+automatic ACMG/AMP classification. It follows one exact leading hypothesis
+through the focused, agnostic, and recall ranks; queries a pinned full ClinVar
+archive by exact GRCh38 allele identity; and joins those results to direct BAM
+and WhatsHap evidence. Another nucleotide that happens to encode the same
+protein change is retained as a distinct allele and cannot lend its ClinVar
+classification to the candidate.
+
+Candidate BAM inspection excludes secondary, supplementary, duplicate,
+QC-failed, low-mapping-quality, and low-base-quality observations. It reports
+ref/alt balance, strand, proper-pair and soft-clipping counts, mapping/base
+quality, distance from read ends, and exact shared-fragment haplotypes without
+persisting read names or sequences.
 
 Public truth-set benchmarking reports TP, FP, FN, runtime, memory, incremental
 rescue, and false positives per rescue. Its threshold policy is advisory. It

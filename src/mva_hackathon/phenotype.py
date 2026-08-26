@@ -138,7 +138,12 @@ def render_phenotype_review(manifest: PhenotypeManifest) -> str:
     for index, observation in enumerate(manifest.observations, start=1):
         values = [observation.feature, observation.hpo_id, observation.notes]
         escaped = [value.replace("|", "\\|").replace("\n", " ") for value in values]
-        lines.append(f"| {index} | {escaped[0]} | `{escaped[1]}` | {escaped[2]} | unresolved |")
+        decision = (
+            "unresolved"
+            if observation.subject == "unresolved"
+            else f"{observation.subject}_{'present' if observation.present else 'absent'}"
+        )
+        lines.append(f"| {index} | {escaped[0]} | `{escaped[1]}` | {escaped[2]} | {decision} |")
     lines.extend(
         [
             "",

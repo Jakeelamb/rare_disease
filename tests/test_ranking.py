@@ -28,6 +28,7 @@ def variant(
     cadd_phred: float | None = 30,
     dp: int | None = 40,
     gq: float | None = 99,
+    clinvar_significance: str | None = None,
 ) -> VariantEvidence:
     return VariantEvidence(
         key=VariantKey(chrom="15", pos=pos, ref="A", alt="T"),
@@ -48,6 +49,7 @@ def variant(
             phenotype_gene_score=phenotype_score,
             disease_mechanism_match=0.9,
             cadd_phred=cadd_phred,
+            clinvar_significance=clinvar_significance,
         ),
     )
 
@@ -156,6 +158,26 @@ def test_missing_evidence_never_receives_positive_credit() -> None:
     assert contributions["rarity"].raw_value == 0.0
     assert contributions["pathogenicity"].raw_value == 0.0
     assert "missing evidence" in " ".join(top.cautions)
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    (("Likely pathogenic", 0.85), ("Likely benign", -0.70)),
+)
+def test_clinvar_labels_match_exact_policy_categories(label: str, expected: float) -> None:
+    top = rank_case([variant(100, gt="1/1", clinvar_significance=label)], POLICY).candidates[0]
+    clinical = next(item for item in top.contributions if item.term == "clinical")
+
+    assert clinical.raw_value == expected
+
+
+def test_loss_of_function_alleles_do_not_request_missense_predictors() -> None:
+    left = variant(100, consequence="stop_gained", cadd_phred=None)
+    right = variant(200, consequence="frameshift_variant", cadd_phred=None)
+
+    top = rank_case([left, right], POLICY).candidates[0]
+
+    assert "pathogenicity predictors" not in " ".join(top.cautions)
 
 
 def test_weak_passenger_allele_cannot_form_a_pair() -> None:

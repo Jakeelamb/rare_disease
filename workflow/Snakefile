@@ -53,6 +53,7 @@ fastp_jsons = expand(f"{private_root}/qc/fastp/{{lane}}.fastp.json", lane=lanes)
 phenotype_priors = f"{private_root}/evidence/phenotype_gene_priors.yaml"
 pixi_env_root = Path(config["pixi"]["environment_root"])
 vep_bin = pixi_env_root / "vep" / "bin"
+vep_plugin_dir = pixi_env_root / "vep" / "share" / "ensembl-vep-116.1-0"
 wgs_bin = pixi_env_root / "wgs" / "bin"
 phasing_bin = pixi_env_root / "phasing" / "bin"
 
@@ -221,7 +222,7 @@ rule prior_normalized_vcf:
           --regions {params.regions:q} --output-type u {input.vcf:q} 2>> {log:q} \
         | bcftools norm --threads {threads} --multiallelics -any \
           --fasta-ref {input.reference:q} --output-type z --output {output.vcf:q} 2>> {log:q}
-        bcftools index --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
+        bcftools index --force --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
         """
 
 
@@ -230,6 +231,10 @@ rule annotate_prior_vep:
         vcf=f"{private_root}/variants/mva_prior.normalized.vcf.gz",
         tbi=f"{private_root}/variants/mva_prior.normalized.vcf.gz.tbi",
         cache="resources/vep/homo_sapiens/116_GRCh38/info.txt",
+        reference=config["references"]["alignment_fasta"],
+        fai=f"{config['references']['alignment_fasta']}.fai",
+        alphamissense=config["references"]["alphamissense"],
+        alphamissense_tbi=f"{config['references']['alphamissense']}.tbi",
     output:
         vcf=f"{private_root}/variants/mva_prior.vep.vcf.gz",
         tbi=f"{private_root}/variants/mva_prior.vep.vcf.gz.tbi",
@@ -242,15 +247,19 @@ rule annotate_prior_vep:
         vep=str(vep_bin / "vep"),
         bgzip=str(vep_bin / "bgzip"),
         tabix=str(vep_bin / "tabix"),
+        plugin_dir=str(vep_plugin_dir),
     shell:
         """
         {params.perl:q} {params.vep:q} --input_file {input.vcf:q} --output_file STDOUT \
           --format vcf --vcf --offline --cache --cache_version 116 --assembly GRCh38 \
-          --dir_cache {params.cache:q} --symbol --canonical --mane --biotype \
+          --dir_cache {params.cache:q} --fasta {input.reference:q} \
+          --dir_plugins {params.plugin_dir:q} \
+          --plugin AlphaMissense,file={input.alphamissense:q} \
+          --symbol --canonical --mane --biotype --hgvs --sift b --polyphen b \
           --variant_class --numbers --af_gnomade --af_gnomadg --no_stats \
           --force_overwrite --fork {threads} 2> {log:q} \
         | {params.bgzip:q} --threads {threads} > {output.vcf:q}
-        {params.tabix:q} --preset vcf {output.vcf:q}
+        {params.tabix:q} --force --preset vcf {output.vcf:q}
         """
 
 
@@ -267,7 +276,8 @@ rule prior_evidence:
     shell:
         """
         mva vep-to-evidence {input.vcf:q} --gene-priors {input.priors:q} \
-          --mechanism-priors {input.mechanism:q} --output {output:q} > {log:q}
+          --mechanism-priors {input.mechanism:q} --phase-method read_backed \
+          --output {output:q} > {log:q}
         """
 
 
@@ -275,6 +285,7 @@ rule rank_prior:
     input:
         evidence=f"{private_root}/evidence/mva_prior.jsonl",
         policy=config["policy"],
+        ranker="src/mva_hackathon/ranking.py",
     output:
         f"{private_root}/ranking/mva_prior.ranked.json",
     log:
@@ -312,7 +323,7 @@ rule agnostic_normalized_vcf:
           {input.vcf:q} 2>> {log:q} \
         | bcftools norm --threads {threads} --multiallelics -any \
           --fasta-ref {input.reference:q} --output-type z --output {output.vcf:q} 2>> {log:q}
-        bcftools index --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
+        bcftools index --force --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
         """
 
 
@@ -331,7 +342,7 @@ rule agnostic_coding_candidates_vcf:
         """
         bcftools view --threads {threads} --regions-file {input.regions:q} \
           --output-type z --output {output.vcf:q} {input.vcf:q} 2> {log:q}
-        bcftools index --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
+        bcftools index --force --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
         """
 
 
@@ -340,6 +351,10 @@ rule annotate_agnostic_coding_vep:
         vcf=f"{private_root}/variants/agnostic.coding_candidates.vcf.gz",
         tbi=f"{private_root}/variants/agnostic.coding_candidates.vcf.gz.tbi",
         cache="resources/vep/homo_sapiens/116_GRCh38/info.txt",
+        reference=config["references"]["alignment_fasta"],
+        fai=f"{config['references']['alignment_fasta']}.fai",
+        alphamissense=config["references"]["alphamissense"],
+        alphamissense_tbi=f"{config['references']['alphamissense']}.tbi",
     output:
         vcf=f"{private_root}/variants/agnostic_coding.vep.vcf.gz",
         tbi=f"{private_root}/variants/agnostic_coding.vep.vcf.gz.tbi",
@@ -352,15 +367,19 @@ rule annotate_agnostic_coding_vep:
         vep=str(vep_bin / "vep"),
         bgzip=str(vep_bin / "bgzip"),
         tabix=str(vep_bin / "tabix"),
+        plugin_dir=str(vep_plugin_dir),
     shell:
         """
         {params.perl:q} {params.vep:q} --input_file {input.vcf:q} --output_file STDOUT \
           --format vcf --vcf --offline --cache --cache_version 116 --assembly GRCh38 \
-          --dir_cache {params.cache:q} --symbol --canonical --mane --biotype \
+          --dir_cache {params.cache:q} --fasta {input.reference:q} \
+          --dir_plugins {params.plugin_dir:q} \
+          --plugin AlphaMissense,file={input.alphamissense:q} \
+          --symbol --canonical --mane --biotype --hgvs --sift b --polyphen b \
           --variant_class --numbers --af_gnomade --af_gnomadg --no_stats \
           --force_overwrite --fork {threads} --buffer_size 50000 2> {log:q} \
         | {params.bgzip:q} --threads {threads} > {output.vcf:q}
-        {params.tabix:q} --preset vcf {output.vcf:q}
+        {params.tabix:q} --force --preset vcf {output.vcf:q}
         """
 
 
@@ -374,13 +393,17 @@ rule agnostic_coding_evidence:
     log:
         f"{private_root}/logs/agnostic_coding_evidence.log",
     shell:
-        "mva vep-to-evidence {input.vcf:q} --gene-priors {input.priors:q} --output {output:q} > {log:q}"
+        """
+        mva vep-to-evidence {input.vcf:q} --gene-priors {input.priors:q} \
+          --phase-method read_backed --output {output:q} > {log:q}
+        """
 
 
 rule rank_agnostic_coding:
     input:
         evidence=f"{private_root}/evidence/agnostic_coding.jsonl",
         policy=config["policy"],
+        ranker="src/mva_hackathon/ranking.py",
     output:
         f"{private_root}/ranking/agnostic_coding.ranked.json",
     log:
@@ -458,7 +481,7 @@ rule deepvariant_coding_candidates:
         """
         bcftools view --threads {threads} --regions-file {input.regions:q} \
           --output-type z --output {output.vcf:q} {input.vcf:q} 2> {log:q}
-        bcftools index --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
+        bcftools index --force --threads {threads} --tbi {output.vcf:q} 2>> {log:q}
         """
 
 
@@ -467,6 +490,10 @@ rule annotate_deepvariant_coding_vep:
         vcf=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vcf.gz",
         tbi=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vcf.gz.tbi",
         cache="resources/vep/homo_sapiens/116_GRCh38/info.txt",
+        reference=config["references"]["alignment_fasta"],
+        fai=f"{config['references']['alignment_fasta']}.fai",
+        alphamissense=config["references"]["alphamissense"],
+        alphamissense_tbi=f"{config['references']['alphamissense']}.tbi",
     output:
         vcf=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vep.vcf.gz",
         tbi=f"{private_root}/wgs/deepvariant/PROBAND01.coding.vep.vcf.gz.tbi",
@@ -479,15 +506,19 @@ rule annotate_deepvariant_coding_vep:
         vep=str(vep_bin / "vep"),
         bgzip=str(vep_bin / "bgzip"),
         tabix=str(vep_bin / "tabix"),
+        plugin_dir=str(vep_plugin_dir),
     shell:
         """
         {params.perl:q} {params.vep:q} --input_file {input.vcf:q} --output_file STDOUT \
           --format vcf --vcf --offline --cache --cache_version 116 --assembly GRCh38 \
-          --dir_cache {params.cache:q} --symbol --canonical --mane --biotype \
+          --dir_cache {params.cache:q} --fasta {input.reference:q} \
+          --dir_plugins {params.plugin_dir:q} \
+          --plugin AlphaMissense,file={input.alphamissense:q} \
+          --symbol --canonical --mane --biotype --hgvs --sift b --polyphen b \
           --variant_class --numbers --af_gnomade --af_gnomadg --no_stats \
           --force_overwrite --fork {threads} --buffer_size 50000 2> {log:q} \
         | {params.bgzip:q} --threads {threads} > {output.vcf:q}
-        {params.tabix:q} --preset vcf {output.vcf:q}
+        {params.tabix:q} --force --preset vcf {output.vcf:q}
         """
 
 
@@ -511,6 +542,7 @@ rule rank_deepvariant:
     input:
         evidence=f"{private_root}/wgs/evidence/deepvariant_coding.jsonl",
         policy=config["policy"],
+        ranker="src/mva_hackathon/ranking.py",
     output:
         f"{private_root}/wgs/ranking/deepvariant_coding.ranked.json",
     log:
@@ -556,3 +588,48 @@ rule supplied_deepvariant_vcf_stats:
         f"{private_root}/logs/callset_stats.log",
     shell:
         "bcftools stats --threads {threads} {input.supplied:q} {input.deepvariant:q} > {output:q} 2> {log:q}"
+
+
+rule query_leading_candidate_clinvar:
+    input:
+        ranked=f"{private_root}/ranking/mva_prior.ranked.json",
+        archive=config["references"]["clinvar_archive"],
+        code="src/mva_hackathon/adjudication.py",
+    output:
+        f"{private_root}/wgs/adjudication/leading_candidate.clinvar.json",
+    log:
+        f"{private_root}/logs/leading_candidate_clinvar.log",
+    params:
+        release=config["references"]["clinvar_release"],
+    shell:
+        """
+        mva query-candidate-clinvar {input.ranked:q} --archive {input.archive:q} \
+          --release {params.release:q} --hypothesis-limit 3 --output {output:q} > {log:q}
+        """
+
+
+rule adjudicate_leading_candidate:
+    input:
+        focused=f"{private_root}/ranking/mva_prior.ranked.json",
+        agnostic=f"{private_root}/ranking/agnostic_coding.ranked.json",
+        deepvariant=f"{private_root}/wgs/ranking/deepvariant_coding.ranked.json",
+        recall_vcf=f"{private_root}/wgs/deepvariant/PROBAND01.phased.vcf.gz",
+        recall_tbi=f"{private_root}/wgs/deepvariant/PROBAND01.phased.vcf.gz.tbi",
+        reads=f"{private_root}/wgs/qc/leading_candidate_reads.json",
+        clinvar=f"{private_root}/wgs/adjudication/leading_candidate.clinvar.json",
+        code="src/mva_hackathon/adjudication.py",
+    output:
+        json=f"{private_root}/wgs/adjudication/leading_candidate.json",
+        review=f"{private_root}/wgs/adjudication/leading_candidate.review.md",
+    log:
+        f"{private_root}/logs/leading_candidate_adjudication.log",
+    shell:
+        """
+        mva adjudicate-leading {input.focused:q} \
+          --ranking focused={input.focused:q} \
+          --ranking agnostic={input.agnostic:q} \
+          --ranking deepvariant={input.deepvariant:q} \
+          --recall-vcf {input.recall_vcf:q} --read-audit {input.reads:q} \
+          --clinvar {input.clinvar:q} --json-output {output.json:q} \
+          --review-output {output.review:q} > {log:q}
+        """

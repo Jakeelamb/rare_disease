@@ -17,6 +17,8 @@ challenge_space/
 resources/vep/
 resources/reference/
 resources/hpo/
+resources/clinvar/
+resources/alphamissense/
 
 # Python / Pixi / editor state
 .pixi/

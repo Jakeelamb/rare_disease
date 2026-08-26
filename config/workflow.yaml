@@ -14,6 +14,9 @@ references:
   hpo_gene_annotations: resources/hpo/genes_to_phenotype.txt
   hpo_release: "v2026-06-23"
   coding_regions: resources/vep/Ensembl.GRCh38.116.protein_coding_exons_plus20.bed
+  alphamissense: resources/alphamissense/AlphaMissense_hg38.tsv.gz
+  clinvar_archive: resources/clinvar/variant_summary_2026-08.txt.gz
+  clinvar_release: "2026-08"
   mechanism_priors: config/disease_priors.yaml
 policy: config/scoring_policy.yaml
 outputs:
@@ -26,6 +29,10 @@ threads:
   vep: 12
   alignment: 20
   deepvariant: 20
+read_audit:
+  min_mapping_quality: 20
+  min_base_quality: 20
+  min_phase_support_fragments: 2
 containers:
   deepvariant: >-
     google/deepvariant@sha256:962e5a83b1d76aae6990625d47102785f791603f2138aa1fa9aa4fb6a2eecbe6
