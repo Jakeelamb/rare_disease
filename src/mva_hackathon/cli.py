@@ -302,7 +302,7 @@ def validate_submission_command(
 def submission_preflight_command(
     csv_path: Annotated[
         Path, typer.Option("--csv", exists=True, dir_okay=False, readable=True)
-    ] = Path("results/private/submission/final/jl_wgs_v1.csv"),
+    ] = Path("results/private/submission/final/jakeelamb_jl_wgs_v1.csv"),
     report_path: Annotated[
         Path, typer.Option("--report", exists=True, dir_okay=False, readable=True)
     ] = Path("results/private/submission/final/jakeelamb_track1_report.md"),
@@ -346,7 +346,7 @@ def _git_output(*args: str) -> str:
 def submission_package_command(
     csv_path: Annotated[
         Path, typer.Option("--csv", exists=True, dir_okay=False, readable=True)
-    ] = Path("results/private/submission/final/jl_wgs_v1.csv"),
+    ] = Path("results/private/submission/final/jakeelamb_jl_wgs_v1.csv"),
     report_path: Annotated[
         Path, typer.Option("--report", exists=True, dir_okay=False, readable=True)
     ] = Path("results/private/submission/final/jakeelamb_track1_report.md"),
