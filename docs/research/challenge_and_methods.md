@@ -2,11 +2,11 @@
 
 ## Challenge evidence and method brief
 
-**Evidence snapshot:** 2026-08-25<br>
+**Evidence snapshot:** 2026-08-25; live contract refreshed 2026-08-29<br>
 **Official Space revision:** `37e25dceda63ecec7c5b2ebeffd1ea0052ad886e`<br>
 **Official dataset revision:** `f534cb0c1a607110c6dad0194299bd3dd62df542`
 
-This note is pinned to the revisions above because the challenge launched on 2026-08-24 and its rules, code, and timeline may still change. Re-check the live Space before every submission.
+This note is pinned to the revisions above because the challenge launched on 2026-08-24 and its rules, code, and timeline may still change. A 2026-08-29 live check at Space revision `1c761cc23d90aebe6a011fd5b0b99517df42408c` confirmed the CSV evaluator was unchanged and incorporated the organizer's hosted-service/privacy clarification plus the required AI-assistance disclosure. Re-check the live Space before every submission.
 
 **Implementation boundary:** Section 7 records evaluated workflow options, not
 a claim that every named tool is installed. The executable workflow is defined
@@ -22,7 +22,7 @@ DAG or current result.
 3. The provided VCF is a useful starting artifact, not a complete diagnostic workflow: its header identifies Sentieon Haplotyper/GVCFtyper followed by GATK VariantFiltration, and it contains a single sample with standard small-variant genotype/quality fields. There is no functional annotation in the observed header and no provided SV/CNV callset.
 4. The official repositories contain the submission UI, scorer, and templates, but no starter diagnostic notebook, baseline analysis pipeline, trained model, or benchmark output. A transparent workflow therefore needs to establish its own provenance, annotation, prioritization, review, and exact-output validation.
 5. The safest high-performing design is a **two-lane analysis**: an agnostic phenotype/inheritance-aware whole-genome ranking plus an explicit MVA-mechanism hypothesis lane. The latter must not hard-filter away novel or noncanonical explanations.
-6. Do not send patient-level clinical or variant data to hosted LLM/API providers until the organizers answer the open privacy question. The published rules prohibit granting data access and require deletion of source and derived data; organizers had not answered the specific third-party API question as of this snapshot. [Open discussion #2](https://huggingface.co/spaces/SageBio/rare-disease-real-kid-mva-hackathon-2026/discussions/2)
+6. The organizer now distinguishes a hosted service acting only as a processor from a recipient: no training/use rights and time-limited, purpose-limited retention are required. Record the provider, plan/tier, and relevant setting in the methods report. [Organizer clarification](https://huggingface.co/spaces/SageBio/rare-disease-real-kid-mva-hackathon-2026/discussions/2)
 
 ## 1. Official objective, tracks, and schedule
 
@@ -162,7 +162,13 @@ The dataset card declares `cc-by-4.0`, but the same card gates access behind spe
 
 ### Local/hosted model boundary
 
-An organizer answer is still pending on whether variant rows, HPO terms, candidate lists, or prompts may be sent to hosted LLM APIs and whether provider logs fall under the deletion obligation. Until answered, use local inference only for patient-derived content, or restrict hosted tools to public literature and non-patient-specific questions. [Open organizer discussion](https://huggingface.co/spaces/SageBio/rare-disease-real-kid-mva-hackathon-2026/discussions/2)
+The organizer permits hosted tools that act only as processors: the provider
+must take no training/use rights in inputs or outputs, and retention must be
+limited in time and purpose. Zero retention is not mandatory. Participants
+must record the provider, plan/tier, and relevant data-handling setting and
+should not rate outputs containing challenge content. The deletion attestation
+covers systems participants control, while acceptable time-limited provider
+logs are bounded by the service terms. [Organizer clarification](https://huggingface.co/spaces/SageBio/rare-disease-real-kid-mva-hackathon-2026/discussions/2)
 
 ## 6. What the official baseline does and does not provide
 
@@ -334,9 +340,11 @@ The official methods workbook explicitly asks for automation versus manual curat
 
 ## 10. Unresolved blockers and organizer questions
 
-1. **Hosted API/LLM privacy:** no organizer answer yet on whether patient-derived HPO/variant data can be sent to third-party APIs, what retention terms are acceptable, or how provider logs interact with deletion. [Discussion #2](https://huggingface.co/spaces/SageBio/rare-disease-real-kid-mva-hackathon-2026/discussions/2)
+1. **Commercial-service account setting:** the provider, plan/tier, and actual
+   data-control setting used for each hosted AI service must be recorded; do not
+   infer a favorable setting from generic provider policy.
 2. **Dataset license versus special terms:** the card says CC BY 4.0 while rules prohibit redistribution and mandate deletion. Ask organizers to state the governing license/data-transfer terms unambiguously.
-3. **Derived-data boundary:** rules require deletion of all intermediate/derived datasets, but also allow public code, models, and derived outputs. Ask which artifacts—HPO lists, candidate tables, annotated VCFs, prompts, logs, and evidence cards—may be retained or published.
+3. **Derived-data boundary:** the organizer clarified that genome-bearing source files, genotype-scale derived tables, genome-bearing prompts/logs, and genome-trained artifacts must be deleted, while ranked candidate findings, HPO terms, gene/pathway rankings, code, reports, and leaderboard entries may be kept. Borderline artifacts still require conservative review.
 4. **Secondary-finding scorer mismatch:** prose says secondary rows do not hurt, but the evaluator includes all rows regardless of `finding_type`. Ask whether the code or documentation will change.
 5. **Chromosome normalization:** provided VCF contigs omit `chr`; template and evaluator fallback use `chr`. Ask organizers to confirm the production ground-truth convention.
 6. **Track 1 ranking:** no published formula combines Rank Points and F-max, no tie-break, and no precise role for qualitative method review in final awards.

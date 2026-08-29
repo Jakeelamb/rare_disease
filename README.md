@@ -193,22 +193,41 @@ The prediction CSV and case-specific report are prepared outside Git under
 `results/private/submission/`. They are uploaded manually through the official
 Space and are never generated or transmitted by this repository.
 
+Current Track 1 instructions require the report to disclose any commercial
+LLM/AI assistant's provider, plan or tier, and relevant data-handling setting.
+The repository may remain private while the Hackathon is active, but must be
+made public when it ends.
+
 ## Manual submission boundary
 
 No command or workflow rule creates a submission CSV or uploads anything. A
-read-only schema checker remains available for a CSV that researchers prepare
-manually:
+read-only preflight validates the manually reviewed CSV and Markdown methods
+report against the contest-facing contract:
 
 ```bash
-pixi run mva validate-submission path/to/manual.csv
+pixi run submission-ready
 ```
+
+After public-safe changes are committed, create a private content-addressed
+bundle containing the reviewed CSV, report, `pixi.lock`, a machine-readable
+manifest, and `SHA256SUMS`:
+
+```bash
+pixi run submission-package
+```
+
+The bundle is written under ignored `results/private/submission/packages/`.
+Packaging copies reviewed artifacts; it does not generate predictions, change
+the CSV/report, or upload anything.
 
 ## Privacy and scientific scope
 
-The input genome and phenotype belong to a real child. Do not redistribute raw
-or derived patient data, send patient-level content to hosted APIs, or commit
-private reports. Follow the official controlled-access, no-recontact, embargo,
-and deletion requirements summarized in
+The input genome and phenotype belong to a real child. Do not redistribute
+genome-bearing source or derived data or commit private reports. Use a hosted
+service only when its terms make it a processor with no training/use rights and
+time-limited retention, and disclose the provider, plan/tier, and relevant
+setting. Follow the official controlled-access, no-recontact, embargo, and
+deletion requirements summarized in
 [challenge contract](docs/challenge_contract.md).
 
 This is research software, not a clinical diagnostic system. See the

@@ -4,10 +4,13 @@
 **Space revision:** `37e25dceda63ecec7c5b2ebeffd1ea0052ad886e`<br>
 **Dataset revision:** `f534cb0c1a607110c6dad0194299bd3dd62df542`
 
-Live drift check on 2026-08-26: Space HEAD was
-`d27c33953ecb0cfd7fa316c7cd93ff0ffb05cc1d`. Its Track 1 delta from the
-pinned release only changed template links to download buttons; the evaluator,
-CSV template, and scoring semantics were unchanged.
+Live drift check on 2026-08-29: Space HEAD was
+`1c761cc23d90aebe6a011fd5b0b99517df42408c`. The evaluator, CSV template,
+and scoring semantics were unchanged. Track 1 instructions now require users
+of a commercial LLM/AI assistant to disclose the provider, plan or tier, and
+relevant data-handling setting in the methods report. They also clarify that a
+GitHub repository may remain private during the Hackathon but must be public
+when it ends.
 
 This is an engineering checklist derived from the pinned official challenge
 code and rules. The [full evidence brief](research/challenge_and_methods.md)
@@ -15,15 +18,21 @@ contains links and scorer details. Re-check the live rules before every upload.
 
 ## Data boundary
 
-- Keep all source, intermediate, and derived patient data under ignored local
-  paths. Do not grant access to unregistered people or hosted services.
+- Keep source genomic data and genome-scale intermediate/derived data under
+  ignored local paths. Do not grant control rights to unregistered people or
+  services.
 - Do not recontact the child, family, or MVA Society contacts.
-- Treat patient-level calls, HPO rows, candidate lists, and model prompts as
-  restricted. Hosted API use is paused pending organizer clarification.
-- Delete source and derived data from every environment within 30 days after
-  challenge close, then send the required deletion confirmation email.
-- Public artifacts may contain code, configuration, aggregate QC, cited public
-  knowledge, and carefully minimized conclusions only.
+- A hosted service may be used as a processor only when its terms take no
+  training/use rights in inputs or outputs and limit retention in time and
+  purpose. Record provider, plan/tier, and relevant setting; do not submit
+  feedback containing challenge content.
+- Delete VCF/BAM/CRAM files, copies/slices/reformats, genotype-scale annotated
+  tables, genome-bearing prompts/logs, and genome-trained model artifacts from
+  systems under participant control within 30 days after challenge close,
+  then send the required deletion confirmation email.
+- Ranked candidate variants, HPO terms, gene/pathway rankings, code, reports,
+  and leaderboard findings may be retained. Public artifacts must not expose
+  a meaningful portion of the child's genome.
 
 ## Track 1 release gate
 
@@ -33,8 +42,11 @@ contains links and scorer details. Re-check the live rules before every upload.
 - Keep EPCR values unique and strictly descending; review every row manually.
 - Do not place incidental findings above primary hypotheses because the pinned
   evaluator does not exclude `finding_type` from automated scoring.
-- Attach the public code repository and a methods report only after a privacy
-  review confirms neither contains restricted data.
+- Attach the GitHub repository and a PDF/Markdown methods report only after a
+  privacy review. The repository may remain private during the Hackathon but
+  must be public when it ends.
+- If an LLM/AI assistant was used, record its provider, plan/tier, and relevant
+  data-handling setting in the methods report.
 
 ## Track 2 release gate
 

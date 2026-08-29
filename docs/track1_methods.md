@@ -1,6 +1,6 @@
 # Track 1 methods
 
-**Version:** 2026-08-26
+**Version:** 2026-08-29
 **Scope:** case-neutral public methods; patient-level inputs, evidence, and reports stay ignored
 
 ## Objective and decision unit
@@ -135,6 +135,17 @@ No automatic ACMG/AMP classification is assigned. In particular, formal PVS1
 strength still requires transcript, NMD, disease-mechanism, and rescue review;
 missing population frequency is not proof of absence; and computational
 predictors do not establish pathogenicity.
+
+## AI assistance and data handling
+
+OpenAI Codex, authenticated through a ChatGPT Pro plan, assisted with coding,
+testing, log review, public research, and report drafting. Bulk FASTQ, BAM, and
+genome-wide VCF processing ran through local commands rather than manual web
+uploads. The account's **Improve the model for everyone** setting was OFF
+during the analysis, as confirmed by the entrant, so inputs and outputs were
+opted out of model improvement. The case-specific submission report records
+the exact assistance and data-handling boundary required by the current Track
+1 instructions.
 
 ## Validation and limitations
 

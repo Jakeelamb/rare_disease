@@ -100,6 +100,9 @@ format-check = "ruff format --check ."
 typecheck = "mypy src"
 workflow-dry-run = "snakemake --snakefile workflow/Snakefile --cores 1 --dry-run"
 workflow-smoke = "python scripts/workflow_smoke.py"
+submission-preflight = "mva submission-preflight"
+submission-ready = { depends-on = ["privacy-audit", "submission-preflight"] }
+submission-package = { cmd = "mva submission-package", depends-on = ["submission-ready"] }
 intake = "snakemake --snakefile workflow/Snakefile --cores 12 intake"
 phenotype-extraction = "snakemake --snakefile workflow/Snakefile --cores 4 phenotype_extraction"
 phenotype-scoring = "snakemake --snakefile workflow/Snakefile --cores 4 phenotype_scoring"

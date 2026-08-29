@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from typing import Annotated
 
@@ -47,6 +48,7 @@ from .ranking import rank_case
 from .read_evidence import CandidateReadAudit, inspect_ranked_bam, write_candidate_read_audit
 from .report import write_ranked_case_report
 from .submission import validate_submission
+from .submission_package import create_submission_package, sha256_file, validate_methods_report
 from .vcf import inspect_vcf
 from .vep import evidence_summary, read_evidence_jsonl, vep_to_evidence, write_evidence_jsonl
 
@@ -294,6 +296,102 @@ def validate_submission_command(
     if not result.ok:
         raise typer.Exit(code=2)
     console.print("[green]PASS[/green] submission contract is valid")
+
+
+@app.command("submission-preflight")
+def submission_preflight_command(
+    csv_path: Annotated[
+        Path, typer.Option("--csv", exists=True, dir_okay=False, readable=True)
+    ] = Path("results/private/submission/final/jl_wgs_v1.csv"),
+    report_path: Annotated[
+        Path, typer.Option("--report", exists=True, dir_okay=False, readable=True)
+    ] = Path("results/private/submission/final/jakeelamb_track1_report.md"),
+) -> None:
+    """Validate reviewed CSV/report artifacts without creating or uploading them."""
+    csv_result = validate_submission(csv_path)
+    report_result = validate_methods_report(report_path)
+    payload = {
+        "csv": {
+            "path": str(csv_path),
+            "sha256": sha256_file(csv_path),
+            "status": "PASS" if csv_result.ok else "FAIL",
+            "errors": list(csv_result.errors),
+            "warnings": list(csv_result.warnings),
+        },
+        "report": {
+            "path": str(report_path),
+            "sha256": sha256_file(report_path),
+            "status": "PASS" if report_result.ok else "FAIL",
+            "abstract_words": report_result.abstract_words,
+            "errors": list(report_result.errors),
+            "warnings": list(report_result.warnings),
+        },
+    }
+    console.print_json(json.dumps(payload))
+    if not csv_result.ok or not report_result.ok:
+        raise typer.Exit(code=2)
+
+
+def _git_output(*args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+@app.command("submission-package")
+def submission_package_command(
+    csv_path: Annotated[
+        Path, typer.Option("--csv", exists=True, dir_okay=False, readable=True)
+    ] = Path("results/private/submission/final/jl_wgs_v1.csv"),
+    report_path: Annotated[
+        Path, typer.Option("--report", exists=True, dir_okay=False, readable=True)
+    ] = Path("results/private/submission/final/jakeelamb_track1_report.md"),
+    pixi_lock: Annotated[
+        Path, typer.Option("--pixi-lock", exists=True, dir_okay=False, readable=True)
+    ] = Path("pixi.lock"),
+    output_root: Annotated[Path, typer.Option("--output-root", file_okay=False)] = Path(
+        "results/private/submission/packages"
+    ),
+    repository_url: Annotated[str, typer.Option("--repository-url")] = (
+        "https://github.com/Jakeelamb/rare_disease"
+    ),
+    space_revision: Annotated[str, typer.Option("--space-revision")] = (
+        "1c761cc23d90aebe6a011fd5b0b99517df42408c"
+    ),
+    dataset_revision: Annotated[str, typer.Option("--dataset-revision")] = (
+        "f534cb0c1a607110c6dad0194299bd3dd62df542"
+    ),
+    allow_dirty: Annotated[bool, typer.Option("--allow-dirty")] = False,
+) -> None:
+    """Create an ignored content-addressed bundle from reviewed artifacts."""
+    dirty = _git_output("status", "--porcelain")
+    if dirty and not allow_dirty:
+        console.print("[red]ERROR[/red] Git worktree is dirty; commit public-safe changes first")
+        raise typer.Exit(code=2)
+    package = create_submission_package(
+        csv_path=csv_path,
+        report_path=report_path,
+        pixi_lock_path=pixi_lock,
+        output_root=output_root,
+        repository_url=repository_url,
+        repository_commit=_git_output("rev-parse", "HEAD"),
+        space_revision=space_revision,
+        dataset_revision=dataset_revision,
+    )
+    console.print_json(
+        json.dumps(
+            {
+                "status": "PASS",
+                "bundle": str(package.bundle_dir),
+                "manifest": str(package.manifest_path),
+                "checksums": str(package.checksums_path),
+            }
+        )
+    )
 
 
 @app.command("render-review")
